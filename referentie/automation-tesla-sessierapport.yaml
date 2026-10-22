@@ -2,7 +2,7 @@
 id: '0000000000000'
 alias: Tesla – sessierapport
 description: Meet per laadsessie hoeveel kWh uit zon en uit het net kwam en wat het kostte, en stuurt bij loskoppelen een push. Energie uit de kWh-teller van de laadpaal; zon/net per tellerstap via de P1-importteller;
-  kosten met tijdgewogen kwartierprijs. Zie docs/07-tesla-sessierapport.md.
+  kosten met tijdgewogen kwartierprijs. Zie docs/07-tesla-session-report.md.
 triggers:
 - entity_id: binary_sensor.controlekamer_tesla_model_3_oplaadkabel
   id: start
