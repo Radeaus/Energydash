@@ -23,19 +23,61 @@ function gauge(parts: { v: number; color: string }[], center: string, label: str
   const arcs: SVGTemplateResult[] = [];
   for (const p of parts) {
     const len = total > 0 ? (Math.max(p.v, 0) / total) * 100 : 0;
-    if (len > 0.05) arcs.push(svg`<path d=${ARC} pathLength="100" fill="none" stroke-width="12" style="stroke:${p.color}" stroke-dasharray="${len} 100" stroke-dashoffset=${-start}></path>`);
+    if (len > 0.05) arcs.push(svg`<path d=${ARC} pathLength="100" fill="none" stroke-width="10" style="stroke:${p.color}" stroke-dasharray="${len} 100" stroke-dashoffset=${-start}></path>`);
     start += len;
   }
   return html`<div class="gauge" tabindex="0" data-tip=${tip}>
-    <svg viewBox="0 0 120 68" aria-hidden="true">
-      <path d=${ARC} fill="none" stroke-width="12" style="stroke:var(--ed-line)"></path>
+    <svg viewBox="0 0 120 66" aria-hidden="true">
+      <path d=${ARC} fill="none" stroke-width="10" style="stroke:var(--ed-line)"></path>
       ${arcs}
-      <text x="60" y="60" text-anchor="middle" style="fill:var(--ed-text);font-size:15px">${center}</text>
+      <text x="60" y="60" text-anchor="middle" style="fill:var(--ed-text);font-size:17px;font-weight:500">${center}</text>
     </svg>
-    <div class="small">${label}</div>
+    <div class="small muted">${label}</div>
   </div>`;
 }
-const ARC = "M10 62 A50 50 0 0 1 110 62";
+const ARC = "M10 61 A50 50 0 0 1 110 61";
+
+interface BarCol {
+  pos: { v: number; color: string }[]; // stacked up from the zero line
+  neg: { v: number; color: string }[]; // stacked down from the zero line
+  aria: string;
+}
+
+/** Axis step of 1, 2, 2.5, or 5 times a power of ten, so `max` takes about `n` steps. */
+function niceStep(max: number, n = 4): number {
+  const raw = Math.max(max, 1e-6) / n;
+  const p = 10 ** Math.floor(Math.log10(raw));
+  return ([1, 2, 2.5, 5, 10].find((m) => m * p >= raw - 1e-12) ?? 10) * p;
+}
+
+/** Stacked bars on a y-axis with gridlines and a clear zero line. */
+function barChart(cols: BarCol[], labels: string[], sel: number, axis: (v: number, step: number) => string, onSel: (i: number) => void): TemplateResult {
+  const sum = (parts: BarCol["pos"]) => parts.reduce((a, p) => a + Math.max(p.v, 0), 0);
+  const pos = Math.max(0, ...cols.map((c) => sum(c.pos)));
+  const neg = Math.max(0, ...cols.map((c) => sum(c.neg)));
+  const step = niceStep(pos + neg > 0.001 ? pos + neg : 1);
+  const top = Math.max(Math.ceil(pos / step - 1e-9), pos > 0 || neg === 0 ? 1 : 0) * step;
+  const bottom = Math.ceil(neg / step - 1e-9) * step;
+  const range = top + bottom;
+  const y = (v: number) => (((v + bottom) / range) * 100).toFixed(2);
+  const ticks: number[] = [];
+  for (let v = -bottom; v <= top + step / 2; v += step) ticks.push(Math.abs(v) < step / 1000 ? 0 : v);
+  const segs = (parts: BarCol["pos"], scale: number, up: boolean) =>
+    parts.filter((p) => p.v > scale * 0.002).map((p, j, arr) => html`<div class="seg" style="height:${((p.v / scale) * 100).toFixed(2)}%;background:${p.color};border-radius:${j === arr.length - 1 ? (up ? "3px 3px 0 0" : "0 0 3px 3px") : "0"}"></div>`);
+  return html`<div class="chart">
+      <div class="axis" aria-hidden="true">${ticks.map((v) => html`<span style="bottom:${y(v)}%">${axis(v, step)}</span>`)}</div>
+      <div class="plot">
+        ${ticks.map((v) => html`<span class="gl ${v === 0 ? "zero" : ""}" style="bottom:${y(v)}%"></span>`)}
+        <div class="cols">
+          ${cols.map((c, i) => html`<button class="col ${i === sel ? "sel" : ""}" aria-label=${c.aria} @mouseenter=${() => onSel(i)} @click=${() => onSel(i)}>
+            <div class="up" style="height:${((top / range) * 100).toFixed(2)}%">${top > 0 ? segs(c.pos, top, true) : nothing}</div>
+            <div class="down" style="height:${((bottom / range) * 100).toFixed(2)}%">${bottom > 0 ? segs(c.neg, bottom, false) : nothing}</div>
+          </button>`)}
+        </div>
+      </div>
+    </div>
+    <div class="chart-labels" aria-hidden="true">${labels.map((l) => html`<span>${l}</span>`)}</div>`;
+}
 
 const NAME_ICONS: [string, string][] = [
   ["was", "mdi:washing-machine"], ["washer", "mdi:washing-machine"], ["droger", "mdi:tumble-dryer"], ["dryer", "mdi:tumble-dryer"],
@@ -93,29 +135,40 @@ const cardCss = css`
   .legend .row { font-size: 14px; gap: 8px; }
   .legend .v { margin-left: auto; font-variant-numeric: tabular-nums; }
   .legend .p { width: 42px; text-align: right; color: var(--ed-text2); font-size: 12px; }
-  .bars { display: flex; gap: 3px; height: 200px; position: relative; }
-  .bars .zero { position: absolute; left: 0; right: 0; border-top: 1px solid var(--ed-line); pointer-events: none; }
-  .bars .col { flex: 1; display: flex; flex-direction: column; cursor: pointer; min-width: 4px; border: none; background: none; padding: 0; height: 100%; }
-  .bars .up { display: flex; flex-direction: column-reverse; gap: 2px; padding-bottom: 1px; }
-  .bars .down { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
-  .bars .seg { width: 100%; flex: none; }
-  .flow-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px 24px; align-items: center; }
-  .flow { position: relative; width: 100%; max-width: 360px; aspect-ratio: 320 / 230; margin: 0 auto 20px; }
-  .flow svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .flow .node { position: absolute; width: 25%; aspect-ratio: 1; transform: translate(-50%, -50%); border: 2px solid; border-radius: 50%; background: var(--ed-card);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 12px; line-height: 1.25; text-align: center; white-space: nowrap; }
+  .chart { display: grid; grid-template-columns: 48px 1fr; height: 220px; margin-top: 8px; }
+  .chart .axis { position: relative; font-size: 11px; color: var(--ed-text2); }
+  .chart .axis span { position: absolute; right: 8px; transform: translateY(50%); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .chart .plot { position: relative; }
+  .chart .gl { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--ed-line); pointer-events: none; }
+  .chart .gl.zero { border-top: 1px solid var(--ed-text2); }
+  .chart .cols { position: absolute; inset: 0; display: flex; gap: 2px; }
+  .chart .col { flex: 1; min-width: 3px; display: flex; flex-direction: column; border: none; background: none; padding: 0; cursor: pointer; border-radius: 4px; }
+  .chart .col.sel { background: color-mix(in srgb, var(--ed-text) 7%, transparent); }
+  .chart .up, .chart .down { display: flex; align-items: center; gap: 1px; }
+  .chart .up { flex-direction: column-reverse; }
+  .chart .down { flex-direction: column; }
+  .chart .seg { flex: none; width: 70%; max-width: 32px; }
+  .chart-labels { display: flex; gap: 2px; margin-left: 48px; font-size: 11px; color: var(--ed-text2); margin-top: 6px; }
+  .chart-labels span { flex: 1; min-width: 3px; text-align: center; overflow: visible; white-space: nowrap; }
+  .flow-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px 40px; align-items: center; }
+  .flow { position: relative; width: 100%; max-width: 380px; aspect-ratio: 320 / 256; margin: 0 auto; }
+  .flow svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .flow .node { position: absolute; width: 26.25%; aspect-ratio: 1; transform: translate(-50%, -50%); border: 2px solid; border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 12px; line-height: 1.25; text-align: center; white-space: nowrap; }
   .flow .node.home { border: 4px solid transparent; }
-  .flow .node ha-icon { --mdc-icon-size: 22px; }
-  .flow .node .name { position: absolute; top: calc(100% + 4px); color: var(--ed-text2); }
-  .flow .node .name.above { top: auto; bottom: calc(100% + 4px); }
-  .balance { height: 12px; border-radius: 6px; background: var(--ed-line); position: relative; display: flex; gap: 2px; }
+  .flow .node ha-icon { --mdc-icon-size: 24px; margin-bottom: 2px; }
+  .flow .node b { font-size: 14px; font-weight: 500; }
+  .flow .node .name { position: absolute; top: calc(100% + 6px); color: var(--ed-text2); font-size: 13px; }
+  .stats { display: grid; gap: 20px; align-content: center; }
+  .stats .head { font-weight: 500; font-size: 14px; }
+  .stats .eq { font-size: 13px; color: var(--ed-text2); margin: 2px 0 10px; font-variant-numeric: tabular-nums; }
+  .balance { height: 10px; border-radius: 5px; background: var(--ed-line); display: flex; overflow: hidden; }
   .balance > div { height: 100%; }
-  .balance > div:first-child { border-radius: 6px 0 0 6px; }
-  .balance .ref { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ed-text); }
-  .gauges { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; }
-  .gauge { text-align: center; border: 1px solid var(--ed-line); border-radius: var(--ed-radius); padding: 8px; }
-  .gauge[data-tip]:hover, .gauge[data-tip]:focus-visible, .flow .node[data-tip]:hover, .flow .node[data-tip]:focus-visible { text-decoration: none; background-color: color-mix(in srgb, var(--ed-text) 4%, var(--ed-card)); }
-  .gauge svg { width: 100%; max-width: 120px; display: block; margin: 0 auto 4px; }
+  .gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; border-top: 1px solid var(--ed-line); padding-top: 16px; }
+  .gauge { text-align: center; border-radius: var(--ed-radius); padding: 6px 4px; }
+  .gauge[data-tip]:hover, .gauge[data-tip]:focus-visible, .flow .node[data-tip]:hover, .flow .node[data-tip]:focus-visible, .stats [data-tip]:hover { text-decoration: none; }
+  .gauge[data-tip]:hover, .gauge[data-tip]:focus-visible { background: color-mix(in srgb, var(--ed-text) 5%, transparent); }
+  .gauge svg { width: 100%; max-width: 130px; display: block; margin: 0 auto 2px; }
   .labels { display: flex; gap: 3px; font-size: 11px; color: var(--ed-text2); margin-top: 4px; }
   .labels span { flex: 1; text-align: center; min-width: 4px; overflow: hidden; white-space: nowrap; }
   .readout { font-size: 14px; margin-top: 8px; }
@@ -265,7 +318,8 @@ export class EdDashboard extends LitElement {
         ${hasSolar ? this._solar(d, zonKwh, kwh) : nothing}
       </div>
       ${d.has_house ? this._flow(d, hasSolar) : nothing}
-      ${this._perDay(d, series, hasSolar)}
+      ${this._perDay(d, series)}
+      ${hasSolar ? this._solarDays(d) : nothing}
       <div class="two">${this._perKwh(d, series)}${this._hours(d)}</div>
     </div>`;
   }
@@ -308,24 +362,22 @@ export class EdDashboard extends LitElement {
     const out = hasExport ? d.export.kwh : 0;
     const produced = zon + out;
     const net = imp - out;
-    const k = (v: number) => `${num(v, Math.abs(v) >= 100 ? 0 : 1)} kWh`;
-    const maxFlow = Math.max(zon, out, imp, 0.001);
-    const width = (v: number) => (1.5 + (v / maxFlow) * 3).toFixed(1);
+    const k = (v: number) => html`<b>${num(v, Math.abs(v) >= 100 ? 0 : 1)}</b> kWh`;
+    const kt = (v: number) => `${num(v, Math.abs(v) >= 100 ? 0 : 1)} kWh`;
     const still = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const SOLAR_HOME = "M168 88 V128 Q168 170 210 170 H229";
-    const SOLAR_GRID = "M152 88 V128 Q152 170 110 170 H91";
-    const GRID_HOME = "M91 186 H229";
-    const line = (path: string, v: number, color: string, reverse = false) => svg`
-      <path d=${path} fill="none" style="stroke:${v > 0.0005 ? color : "var(--ed-line)"}" stroke-width=${v > 0.0005 ? width(v) : "1"}></path>
-      ${v > 0.0005 && !still
-        ? svg`<circle r="3" fill=${color}><animateMotion dur="3s" repeatCount="indefinite" path=${path} keyPoints=${reverse ? "1;0" : "0;1"} keyTimes="0;1" calcMode="linear"></animateMotion></circle>`
-        : nothing}`;
+    const tint = (color: string) => `color-mix(in srgb, ${color} 10%, var(--ed-card))`;
+    const SOLAR_HOME = "M202 52 H226 Q268 52 268 94 V148";
+    const SOLAR_GRID = "M118 52 H94 Q52 52 52 94 V148";
+    const GRID_HOME = "M94 190 H226";
+    const line = (path: string, v: number, color: string) => svg`
+      <path d=${path} fill="none" style="stroke:${v > 0.0005 ? color : "var(--ed-line)"}" stroke-width="2" stroke-linecap="round" stroke-dasharray=${v > 0.0005 ? "none" : "4 4"}></path>
+      ${v > 0.0005 && !still ? svg`<circle r="3.5" style="fill:${color}"><animateMotion dur="2.5s" repeatCount="indefinite" path=${path}></animateMotion></circle>` : nothing}`;
     const share = pct(zon, kwh);
     const gauges: TemplateResult[] = [];
     if (hasExport) {
       gauges.push(gauge(
-        [{ v: out, color: exp }, { v: imp, color: c.net }],
-        k(Math.abs(net)),
+        [{ v: out, color: exp }, { v: Math.max(net, 0), color: c.net }],
+        kt(Math.abs(net)),
         t(net >= 0 ? "d.net_import" : "d.net_export"),
         t("d.tip_balance", { imp: num(imp, 2), exp: num(out, 2), net: num(net, 2) }),
       ));
@@ -338,40 +390,39 @@ export class EdDashboard extends LitElement {
       gauges.push(gauge([{ v: zon, color: c.zon }, { v: imp, color: "transparent" }], `${share}%`, t("d.self_sufficiency"),
         t("d.tip_share", { zon: num(zon, 1), kwh: num(kwh, 1), grid: num(imp, 1) })));
     }
-    const balanceMax = Math.max(imp, out, 0.001);
+    const scale = Math.max(imp, out, 0.001);
     return html`<div class="card">
       <h3>${t("d.flow")}</h3>
       <div class="flow-grid">
-        <div class="flow" role="img" aria-label="${t("d.flow_grid")}: ${t("d.grid")} ${k(imp)}${hasExport ? `, ${t("d.exported")} ${k(out)}` : ""}. ${hasSolar ? `${t("d.solar")}: ${k(produced)}. ` : ""}${t("d.flow_home")}: ${k(kwh)}">
-          <svg viewBox="0 0 320 230" aria-hidden="true">
+        <div class="flow" role="img" aria-label="${t("d.flow_grid")}: ${t("d.grid")} ${kt(imp)}${hasExport ? `, ${t("d.exported")} ${kt(out)}` : ""}. ${hasSolar ? `${t("d.solar")}: ${kt(produced)}. ` : ""}${t("d.flow_home")}: ${kt(kwh)}">
+          <svg viewBox="0 0 320 256" aria-hidden="true">
             ${hasSolar ? line(SOLAR_HOME, zon, c.zon) : nothing}
             ${hasSolar && hasExport ? line(SOLAR_GRID, out, exp) : nothing}
             ${line(GRID_HOME, imp, c.net)}
           </svg>
           ${hasSolar
-            ? html`<div class="node" style="left:50%;top:20.9%;border-color:${c.zon}" tabindex="0" data-tip=${hasExport ? t("d.tip_produced", { zon: num(zon, 1), exp: num(out, 1) }) : t("d.tip_self_used")}>
-                <ha-icon icon="mdi:solar-power-variant" style="color:${c.zon}"></ha-icon><span>${k(hasExport ? produced : zon)}</span><span class="name above">${t("d.solar")}</span>
+            ? html`<div class="node" style="left:50%;top:20.3%;border-color:${c.zon};background:${tint(c.zon)}" tabindex="0" data-tip=${hasExport ? t("d.tip_produced", { zon: num(zon, 1), exp: num(out, 1) }) : t("d.tip_self_used")}>
+                <ha-icon icon="mdi:solar-power-variant" style="color:${c.zon}"></ha-icon><span>${k(hasExport ? produced : zon)}</span><span class="name">${t("d.solar")}</span>
               </div>`
             : nothing}
-          <div class="node" style="left:16.25%;top:77.4%;border-color:${c.net}" tabindex="0" data-tip=${t("d.tip_grid_node", { imp: num(imp, 1), exp: hasExport ? num(out, 1) : "—" })}>
+          <div class="node" style="left:16.25%;top:74.2%;border-color:${c.net};background:${tint(c.net)}" tabindex="0" data-tip=${t("d.tip_grid_node", { imp: num(imp, 1), exp: hasExport ? num(out, 1) : "—" })}>
             <ha-icon icon="mdi:transmission-tower" style="color:${c.net}"></ha-icon>
-            ${hasExport ? html`<span style="color:${exp}">← ${k(out)}</span>` : nothing}
-            <span style="color:${c.net}">→ ${k(imp)}</span>
+            ${hasExport ? html`<span>← ${k(out)}</span>` : nothing}
+            <span>→ ${k(imp)}</span>
             <span class="name">${t("d.flow_grid")}</span>
           </div>
-          <div class="node home" style="left:83.75%;top:77.4%;background:linear-gradient(var(--ed-card), var(--ed-card)) padding-box, conic-gradient(${c.zon} 0 ${share}%, ${c.net} ${share}% 100%) border-box" tabindex="0" data-tip=${t("d.tip_share", { zon: num(zon, 1), kwh: num(kwh, 1), grid: num(imp, 1) })}>
+          <div class="node home" style="left:83.75%;top:74.2%;background:linear-gradient(var(--ed-card), var(--ed-card)) padding-box, conic-gradient(${c.zon} 0 ${share}%, ${c.net} ${share}% 100%) border-box" tabindex="0" data-tip=${t("d.tip_share", { zon: num(zon, 1), kwh: num(kwh, 1), grid: num(imp, 1) })}>
             <ha-icon icon="mdi:home"></ha-icon><span>${k(kwh)}</span><span class="name">${t("d.flow_home")}</span>
           </div>
         </div>
-        <div class="grid" style="align-content:start">
+        <div class="stats">
           ${hasExport
             ? html`<div tabindex="0" data-tip=${t("d.tip_balance", { imp: num(imp, 2), exp: num(out, 2), net: num(net, 2) })}>
-                <div style="font-weight:500">${t("d.balance")}</div>
-                <div class="small" style="margin:2px 0 8px"><span style="color:${c.net}">${num(imp, 2)} kWh</span> − <span style="color:${exp}">${num(out, 2)} kWh</span> = ${num(net, 2)} kWh</div>
+                <div class="head">${t("d.balance")}</div>
+                <div class="eq"><span style="color:${c.net}">${num(imp, 2)} kWh</span> − <span style="color:${exp}">${num(out, 2)} kWh</span> = <b style="color:var(--ed-text)">${num(net, 2)} kWh</b></div>
                 <div class="balance">
-                  <div style="width:${((imp / balanceMax) * 100).toFixed(1)}%;background:${c.net}"></div>
-                  <div style="width:${((out / balanceMax) * 100).toFixed(1)}%;background:${exp}"></div>
-                  <span class="ref" style="left:${((Math.max(net, 0) / balanceMax) * 100).toFixed(1)}%"></span>
+                  <div style="width:${((Math.max(net, 0) / scale) * 100).toFixed(1)}%;background:${c.net}"></div>
+                  <div style="width:${((Math.min(out, scale) / scale) * 100).toFixed(1)}%;background:${exp}"></div>
                 </div>
               </div>`
             : nothing}
@@ -381,49 +432,50 @@ export class EdDashboard extends LitElement {
     </div>`;
   }
 
-  private _perDay(d: Summary, series: string[], hasSolar: boolean): TemplateResult {
-    const c = colors(this.ctx.dark);
-    const exp = c.exp;
-    type Day = Summary["days"][number];
-    const dayTotal = (i: number) => series.reduce((a, id) => a + (d.days[i].series[id]?.cost ?? 0), 0);
-    // Below the line: negative costs, then what the solar panels were worth (grid power not bought, export earnings).
-    const below = (x: Day) => [
-      { v: -series.reduce((a, id) => a + Math.min(x.series[id]?.cost ?? 0, 0), 0), color: "var(--ed-ok)" },
-      ...(hasSolar ? [{ v: x.solar?.value ?? 0, color: c.zon }, { v: x.solar?.export_value ?? 0, color: exp }] : []),
-    ].filter((p) => p.v > 0.0005);
-    const maxPos = Math.max(0.01, ...d.days.map((x) => series.reduce((a, id) => a + Math.max(x.series[id]?.cost ?? 0, 0), 0)));
-    const maxNeg = Math.max(0, ...d.days.map((x) => below(x).reduce((a, p) => a + p.v, 0)));
-    const up = (maxPos / (maxPos + maxNeg)) * 100;
-    const hd = this._hoverDay ?? d.days.length - 1;
-    const sel = d.days[hd];
+  private _dayLabels(d: Summary): string[] {
     const week = this._period === "week";
     const year = this._period === "year";
-    const label = (iso: string) => (year ? day(iso, { month: "long", year: "numeric" }) : day(iso, { weekday: "long", day: "numeric", month: "long" }));
-    const s = sel?.solar;
-    const showSolar = hasSolar && s && s.kwh + s.export_kwh > 0.0005;
+    return d.days.map((x, i) => (year ? day(x.date, { month: "short" }) : week ? day(x.date, { weekday: "short", day: "numeric" }) : i === 0 || (i + 1) % 5 === 0 ? day(x.date, { day: "numeric" }) : ""));
+  }
+
+  private _dayLabel(iso: string): string {
+    return this._period === "year" ? day(iso, { month: "long", year: "numeric" }) : day(iso, { weekday: "long", day: "numeric", month: "long" });
+  }
+
+  private _perDay(d: Summary, series: string[]): TemplateResult {
+    const dayTotal = (i: number) => series.reduce((a, id) => a + (d.days[i].series[id]?.cost ?? 0), 0);
+    const hd = this._hoverDay ?? d.days.length - 1;
+    const sel = d.days[hd];
+    const cols: BarCol[] = d.days.map((x, i) => ({
+      pos: series.map((id) => ({ v: x.series[id]?.cost ?? 0, color: deviceInfo(this.ctx, id).color })),
+      neg: [{ v: -series.reduce((a, id) => a + Math.min(x.series[id]?.cost ?? 0, 0), 0), color: "var(--ed-ok)" }],
+      aria: `${this._dayLabel(x.date)}: ${eur(dayTotal(i))}`,
+    }));
     return html`<div class="card">
-      <h3>${t(year ? "d.per_month" : "d.per_day")}</h3>
-      <div class="bars" style="height:${maxNeg > 0.0005 ? 260 : 200}px">
-        <span class="zero" style="top:${up.toFixed(2)}%"></span>
-        ${d.days.map((x, i) => html`<button class="col" style="opacity:${i === hd ? 1 : 0.6}" aria-label="${label(x.date)}: ${eur(dayTotal(i))}" @mouseenter=${() => (this._hoverDay = i)} @click=${() => (this._hoverDay = i)}>
-          <div class="up" style="height:${up.toFixed(2)}%">
-            ${series.filter((id) => (x.series[id]?.cost ?? 0) > 0.0005).map((id, j, arr) => html`<div class="seg" style="height:${((x.series[id]!.cost / maxPos) * 100).toFixed(2)}%;background:${deviceInfo(this.ctx, id).color};border-radius:${j === arr.length - 1 ? "4px 4px 0 0" : "0"}"></div>`)}
-          </div>
-          <div class="down" style="height:${(100 - up).toFixed(2)}%">
-            ${below(x).map((p, j, arr) => html`<div class="seg" style="height:${((p.v / maxNeg) * 100).toFixed(2)}%;background:${p.color};border-radius:${j === arr.length - 1 ? "0 0 4px 4px" : "0"}"></div>`)}
-          </div>
-        </button>`)}
-      </div>
-      <div class="labels">${d.days.map((x, i) => html`<span>${year ? day(x.date, { month: "short" }) : week ? day(x.date, { weekday: "short", day: "numeric" }) : (i === 0 || (i + 1) % 5 === 0 ? day(x.date, { day: "numeric" }) : "")}</span>`)}</div>
-      ${sel ? html`<div class="readout"><b style="margin-right:12px">${label(sel.date)}: ${eur(dayTotal(hd))}</b>
+      <h3>${t(this._period === "year" ? "d.per_month" : "d.per_day")}</h3>
+      ${barChart(cols, this._dayLabels(d), hd, (v, step) => eur(v, step < 1 ? 2 : 0), (i) => (this._hoverDay = i))}
+      ${sel ? html`<div class="readout"><b style="margin-right:12px">${this._dayLabel(sel.date)}: ${eur(dayTotal(hd))}</b>
         ${series.filter((id) => Math.abs(sel.series[id]?.cost ?? 0) > 0.0005).map((id) => { const i = deviceInfo(this.ctx, id); return html`<span class="it small"><span class="swatch" style="background:${i.color}"></span>${i.name} ${eur(sel.series[id]!.cost)}</span>`; })}</div>` : nothing}
-      ${showSolar
-        ? html`<div class="readout"><span style="margin-right:12px">${t("d.day_solar", { kwh: num(s.kwh + s.export_kwh, 1) })}</span>
-            <span class="it small"><span class="swatch" style="background:${c.zon}"></span>${tipped(`${t("d.self_used")} ${eur(s.value)}`, t("d.tip_day_used", { kwh: num(s.kwh, 1), value: eur(s.value) }))}</span>
-            ${d.export.available ? html`<span class="it small"><span class="swatch" style="background:${exp}"></span>${tipped(`${t("d.exported")} ${eur(s.export_value)}`, t("d.tip_day_exported", { kwh: num(s.export_kwh, 1), value: eur(s.export_value) }))}</span>` : nothing}
-          </div>`
-        : nothing}
-      ${hasSolar && maxNeg > 0.0005 ? html`<p class="muted small" style="margin-top:8px">${t("d.below_line")}</p>` : nothing}
+    </div>`;
+  }
+
+  private _solarDays(d: Summary): TemplateResult {
+    const c = colors(this.ctx.dark);
+    const hasExport = d.export.available;
+    const hd = this._hoverDay ?? d.days.length - 1;
+    const s = d.days[hd]?.solar;
+    const cols: BarCol[] = d.days.map((x) => ({
+      pos: [{ v: x.solar?.kwh ?? 0, color: c.zon }, ...(hasExport ? [{ v: x.solar?.export_kwh ?? 0, color: c.exp }] : [])],
+      neg: [],
+      aria: `${this._dayLabel(x.date)}: ${num((x.solar?.kwh ?? 0) + (hasExport ? x.solar?.export_kwh ?? 0 : 0), 1)} kWh`,
+    }));
+    return html`<div class="card">
+      <h3>${t(this._period === "year" ? "d.solar_per_month" : "d.solar_per_day")}</h3>
+      ${barChart(cols, this._dayLabels(d), hd, (v, step) => `${num(v, step < 1 ? 1 : 0)} kWh`, (i) => (this._hoverDay = i))}
+      ${s ? html`<div class="readout"><b style="margin-right:12px">${this._dayLabel(d.days[hd].date)}: ${hasExport ? t("d.day_produced", { kwh: num(s.kwh + s.export_kwh, 1) }) : `${num(s.kwh, 1)} kWh`}</b>
+        <span class="it small"><span class="swatch" style="background:${c.zon}"></span>${tipped(t("d.day_used", { kwh: num(s.kwh, 1), value: eur(s.value) }), t("d.tip_day_used", { kwh: num(s.kwh, 1), value: eur(s.value) }))}</span>
+        ${hasExport ? html`<span class="it small"><span class="swatch" style="background:${c.exp}"></span>${tipped(t("d.day_exported", { kwh: num(s.export_kwh, 1), value: eur(s.export_value) }), t("d.tip_day_exported", { kwh: num(s.export_kwh, 1), value: eur(s.export_value) }))}</span>` : nothing}
+      </div>` : nothing}
     </div>`;
   }
 

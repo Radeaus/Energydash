@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.4 – October 22, 2026
+
+### New
+
+- **Solar per day** is a separate chart that shows for each day what your solar panels produced, split into what you used yourself and what you exported. Selecting a day also shows how much grid power that saved and what the export earned.
+
+### Improved
+
+- **Cost per day** has a euro axis with gridlines and a clear zero line, and no longer shows solar below the line, so the chart is calmer to read.
+- **Energy distribution** has a cleaner layout: the lines run neatly between solar, grid, and home, and the gauges sit in one row below the grid balance.
+- Selecting a day in **Cost per day** or **Solar per day** highlights the same day in both charts.
+
 ## 1.0.3 – October 22, 2026
 
 ### New
