@@ -857,9 +857,21 @@ class EnergydashCoordinator:
             "price_scale": self.prices.scale,
             "price_current": self.prices.current,
             "price_export_forecast": bool(self.prices.forecast_export),
+            "export_price_now": self._export_price_now(),
+            "forecast_export_now": self.prices.forecast_export.value_at(dt_util.utcnow()) if self.prices.forecast_export else None,
             "import_now": self.import_now(),
             "house_since": min(self.agg.hours[HOUSE_KEY]) if self.agg.hours.get(HOUSE_KEY) else None,
         }
+
+    def _export_price_now(self) -> float | None:
+        """Export price of this moment with the saved settings (example in the settings form)."""
+        if not self.settings.get(CONF_CONTRACT):
+            return None
+        now = dt_util.utcnow()
+        try:
+            return self.price_provider().export_price(now, now + timedelta(minutes=1))
+        except Exception:  # noqa: BLE001 - an example only; never break the config call
+            return None
 
     def hour_now_key(self) -> str:
         return hour_key(dt_util.utcnow(), self.tz)

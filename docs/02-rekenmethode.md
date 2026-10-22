@@ -97,10 +97,11 @@ Ook de terugleverprijs is een keuze van de gebruiker (alleen gevraagd als er een
 
 | Keuze in UI | Terugleverprijs |
 |---|---|
-| **Hetzelfde als de stroomprijs** | `prijs` van dat interval, opslag inbegrepen (salderen) |
 | **Uit je prijs-entiteit** (alleen bij een prijs-entiteit) | de prijs zonder belastingen uit de forecast; staat die er niet in of is het historie, dan afgeleid uit de prijs van de entiteit (zonder opslag) met de verhouding uit de forecast |
 | **Uit een andere entiteit** (alleen bij een prijs-entiteit) | die entiteit |
 | **Een vast bedrag** | dat bedrag (0 mag) |
+
+(De backend kent ook `same`, terugleverprijs = stroomprijs; het paneel biedt die keuze sinds 1.2.6 niet meer aan. Bij een vaste prijs is de terugleverprijs altijd een vast bedrag.)
 
 Instellingen van vóór 1.2.5 hebben deze keuze nog niet en houden hun oude gedrag: met een terugleverprijs-entiteit "Uit een andere entiteit", anders "Uit je prijs-entiteit" (bij een vast tarief het vaste bedrag, of 0).
 

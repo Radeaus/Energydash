@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.6 – 22 oktober 2026
+
+### Snelle start en instellingen
+- Rustiger en compacter: keuzes staan naast elkaar en de teksten zijn korter, zodat elke stap zonder scrollen past.
+- Elke keuze toont in één regel wat er met de prijs gebeurt, met je echte prijzen zodra die bekend zijn: "Nu € 0,30 per kWh", "€ 0,295 + € 0,165 = € 0,460", "Zon € 0,08 per kWh".
+- De keuze "Hetzelfde als de stroomprijs" (salderen) voor teruglevering is weg. Bij een vaste prijs vul je alleen nog je terugleverprijs in.
+
 ## 1.2.5 – 22 oktober 2026
 
 ### Je stroomprijs: gevraagd, niet aangenomen

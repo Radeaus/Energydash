@@ -88,6 +88,11 @@ export const shared = css`
   .radio[aria-checked="true"] .dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ed-pri); }
   .radio b { display: block; font-weight: 500; margin-bottom: 2px; }
   .radio span { font-size: 13px; color: var(--ed-text2); line-height: 1.4; }
+  .radio span.ex {
+    display: block; width: fit-content; margin-top: 8px; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-variant-numeric: tabular-nums;
+    color: var(--ed-text); background: color-mix(in srgb, var(--ed-text) 6%, transparent);
+  }
+  .radio[aria-checked="true"] span.ex { background: color-mix(in srgb, var(--ed-pri) 14%, transparent); }
   .list { display: grid; }
   .list > .item { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--ed-line); }
   .list > .item:last-child { border-bottom: none; }

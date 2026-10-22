@@ -29,7 +29,11 @@ export function withAnswers(s: Settings): Settings {
     // Same rule as settings.export_mode() in the backend.
     if (out.export_price_entity && out.contract === "dynamic") out.export_price_mode = "entity";
     else if (out.contract === "dynamic") out.export_price_mode = "auto";
-    else if (out.export_price_fixed != null) out.export_price_mode = "fixed";
+  }
+  // With a fixed price the export price is a fixed amount; before 1.2.5 an empty amount meant 0.
+  if (out.contract === "fixed") {
+    out.export_price_mode = "fixed";
+    if (s.contract === "fixed" && out.export_price_fixed == null) out.export_price_fixed = 0;
   }
   return out;
 }
@@ -69,8 +73,9 @@ export class EdSettingsForm extends LitElement {
       :host { display: grid; gap: 20px; }
       .q { display: grid; gap: 8px; }
       .q > .title { font-weight: 500; font-size: 14px; }
-      .radios { display: grid; gap: 8px; }
+      .radios { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
       .sub { display: grid; gap: 12px; padding-left: 12px; border-left: 2px solid var(--ed-line); }
+      .row > label.field { flex: 1; min-width: 140px; align-self: flex-start; }
       .meter { display: flex; gap: 4px; align-items: flex-start; }
       .meter ed-entity-select { flex: 1; min-width: 0; }
       .meter button.icon { margin-top: 26px; }
@@ -129,7 +134,7 @@ export class EdSettingsForm extends LitElement {
     if (!s.solar_mode || !s.export_price_mode) return false;
     if (s.export_price_mode === "entity") return !!s.export_price_entity;
     if (s.export_price_mode === "fixed") return s.export_price_fixed != null;
-    return true;
+    return s.export_price_mode === "auto" && s.contract === "dynamic";
   }
 
   private _opt(id: string | null | undefined): EntityOption[] {
@@ -167,36 +172,51 @@ export class EdSettingsForm extends LitElement {
       ${(all && needsSolar(s)) || this.section === "solar" ? html`${all ? html`<h3>${t("sf.h.solar")}</h3>` : nothing}${this._solar(s)}` : nothing}`;
   }
 
+  /** Grid price of this moment with the answers so far: entity (plus markup) or the normal tariff. */
+  private _gridPrice(s: Settings): number | null {
+    if (s.contract === "fixed") return s.price_normal ?? null;
+    const raw = this._state(s.price_entity);
+    return raw === null ? null : raw + (this._extra ? s.price_markup ?? 0 : 0);
+  }
+
   private _price(s: Settings): TemplateResult {
     const entity = s.contract === "dynamic";
     const fixed = s.contract === "fixed";
     const saved = this.config.settings.price_entity === s.price_entity && this.config.settings.contract === "dynamic";
     const st = this.config.status;
-    const now = this._state(s.price_entity);
+    const raw = this._state(s.price_entity);
+    const p = (v: number | null | undefined) => eur(v ?? null, 3);
+    const markup = s.price_markup ?? null;
+    const exFull = raw !== null ? t("ex.full_yes", { price: p(raw) }) : t("ex.full_yes", { price: p(0.29) });
+    const exExtra = raw !== null
+      ? t("ex.full_no", { raw: p(raw), markup: markup !== null && markup > 0 ? p(markup) : t("ex.markup"), total: markup !== null && markup > 0 ? p(raw + markup) : "…" })
+      : t("ex.full_no", { raw: p(0.09), markup: p(0.17), total: p(0.26) });
+    const normal = s.price_normal ?? null;
+    const low = s.price_low ?? null;
     return html`
       <div class="q">
         <span class="title">${t("sf.how")} *</span>
         <div class="radios" role="radiogroup" aria-label=${t("sf.how")}>
-          ${radio(entity, t("sf.entity"), t("sf.entity_text"), () => this._set({ contract: "dynamic" }))}
-          ${radio(fixed, t("sf.fixed"), t("sf.fixed_text"), () => this._set({ contract: "fixed", ...(s.export_price_mode === "auto" || s.export_price_mode === "entity" ? { export_price_mode: null } : {}) }))}
+          ${radio(entity, t("sf.entity"), t("sf.entity_text"), () => this._set({ contract: "dynamic" }),
+            raw !== null && entity ? t("ex.now", { price: eur(raw, 2) }) : t("ex.entity", { a: eur(0.24, 2), b: eur(0.31, 2) }))}
+          ${radio(fixed, t("sf.fixed"), t("sf.fixed_text"), () => this._set({ contract: "fixed", export_price_mode: "fixed" }),
+            fixed && normal !== null ? t("ex.always", { price: eur(normal, 2) }) : t("ex.fixed", { price: eur(0.29, 2) }))}
         </div>
       </div>
       ${entity
         ? html`<div class="sub">
-            <ed-entity-select .hass=${this.hass} .label=${t("sf.price_entity")} .help=${t("sf.price_entity_help")} required
+            <ed-entity-select .hass=${this.hass} .label=${t("sf.price_entity")} required
               .value=${s.price_entity ?? null} .options=${this._priceOptions(s.price_entity)} .filter=${priceFilter}
               @value-changed=${(e: CustomEvent) => this._set({ price_entity: e.detail.value })}></ed-entity-select>
-            ${s.price_entity
+            ${s.price_entity && (saved || raw === null)
               ? html`<div class="help status"><ha-icon icon="mdi:information-outline"></ha-icon><span>
-                  ${now !== null ? t("sf.now", { price: eur(now, 4) }) : t("sf.no_number")}
-                  ${saved ? html` · ${st.price_attribute ? t("set.forecast_found", { attr: st.price_attribute }) + (st.price_scale !== 1 ? t("set.forecast_scaled", { scale: st.price_scale }) : "") : t("set.forecast_none")}` : nothing}
-                </span></div>`
+                  ${raw === null ? t("sf.no_number") : st.price_attribute ? t("sf.forecast_found") : t("sf.forecast_none")}</span></div>`
               : nothing}
             <div class="q">
               <span class="title">${t("sf.full")} *</span>
               <div class="radios" role="radiogroup" aria-label=${t("sf.full")}>
-                ${radio(this._extra === false, t("sf.full_yes"), t("sf.full_yes_text"), () => { this._extra = false; this._set({ price_markup: 0 }); })}
-                ${radio(this._extra === true, t("sf.full_no"), t("sf.full_no_text"), () => { this._extra = true; this._set({ price_markup: s.price_markup ? s.price_markup : null }); })}
+                ${radio(this._extra === false, t("sf.full_yes"), t("sf.full_yes_text"), () => { this._extra = false; this._set({ price_markup: 0 }); }, exFull)}
+                ${radio(this._extra === true, t("sf.full_no"), t("sf.full_no_text"), () => { this._extra = true; this._set({ price_markup: s.price_markup ? s.price_markup : null }); }, exExtra)}
               </div>
             </div>
             ${this._extra
@@ -209,14 +229,16 @@ export class EdSettingsForm extends LitElement {
             <div class="q">
               <span class="title">${t("sf.tariffs")} *</span>
               <div class="radios" role="radiogroup" aria-label=${t("sf.tariffs")}>
-                ${radio(this._dual === false, t("sf.one"), t("sf.one_text"), () => { this._dual = false; this._set({ price_low: null }); })}
-                ${radio(this._dual === true, t("sf.two"), t("sf.two_text"), () => { this._dual = true; this._set({}); })}
+                ${radio(this._dual === false, t("sf.one"), t("sf.one_text"), () => { this._dual = false; this._set({ price_low: null }); },
+                  t("ex.one", { price: eur(normal ?? 0.29, 2) }))}
+                ${radio(this._dual === true, t("sf.two"), t("sf.two_text"), () => { this._dual = true; this._set({}); },
+                  t("ex.two", { normal: eur(normal ?? 0.31, 2), low: eur(low ?? 0.27, 2) }))}
               </div>
             </div>
-            ${this._dual === false ? this._money(t("sf.price"), s.price_normal, t("sf.incl"), (v) => this._set({ price_normal: v })) : nothing}
+            ${this._dual === false ? this._money(t("sf.price"), s.price_normal, "", (v) => this._set({ price_normal: v })) : nothing}
             ${this._dual
-              ? html`${this._money(t("set.normal"), s.price_normal, t("sf.incl"), (v) => this._set({ price_normal: v }))}
-                  ${this._money(t("set.low"), s.price_low, t("set.low_help"), (v) => this._set({ price_low: v }))}`
+              ? html`<div class="row wrap">${this._money(t("set.normal"), s.price_normal, "", (v) => this._set({ price_normal: v }))}
+                  ${this._money(t("set.low"), s.price_low, "", (v) => this._set({ price_low: v }))}</div>`
               : nothing}
           </div>`
         : nothing}`;
@@ -253,32 +275,44 @@ export class EdSettingsForm extends LitElement {
 
   private _solar(s: Settings): TemplateResult {
     const entity = s.contract === "dynamic";
-    const modes: ExportMode[] = entity ? ["same", "auto", "entity", "fixed"] : ["same", "fixed"];
-    const saved = this.config.settings.contract === "dynamic" && this.config.settings.price_entity === s.price_entity;
+    // The forecast belongs to the saved price entity; another entity is only known after saving.
+    const forecast = this.config.settings.price_entity === s.price_entity ? this.config.status.forecast_export_now ?? null : null;
+    const grid = this._gridPrice(s);
+    const exportNow = !entity ? s.export_price_fixed ?? null
+      : s.export_price_mode === "auto" ? forecast
+      : s.export_price_mode === "entity" ? this._state(s.export_price_entity)
+      : s.export_price_mode === "fixed" ? s.export_price_fixed ?? null : null;
+    const solar = (v: number | null) => (v === null ? t("ex.solar_unknown") : t("ex.solar", { price: eur(v, 2) }));
+    const back = (v: number | null, fallback: number) => (v === null ? t("ex.eg", { price: eur(fallback, 2) }) : t("ex.now", { price: eur(v, 2) }));
     return html`
       <div class="q">
         <span class="title">${t("set.solar_mode")} *</span>
         <div class="radios" role="radiogroup" aria-label=${t("set.solar_mode")}>
-          ${(["export", "free", "grid"] as const).map((m) => radio(s.solar_mode === m, t(`set.mode.${m}`), t(`set.mode.${m}_text`), () => this._set({ solar_mode: m })))}
+          ${radio(s.solar_mode === "export", t("set.mode.export"), t("set.mode.export_text"), () => this._set({ solar_mode: "export" }), solar(exportNow))}
+          ${radio(s.solar_mode === "free", t("set.mode.free"), t("set.mode.free_text"), () => this._set({ solar_mode: "free" }), solar(0))}
+          ${radio(s.solar_mode === "grid", t("set.mode.grid"), t("set.mode.grid_text"), () => this._set({ solar_mode: "grid" }), solar(grid))}
         </div>
-        <span class="help">${t("set.solar_mode_help")}</span>
       </div>
       <div class="q">
         <span class="title">${t("sf.export_q")} *</span>
-        <div class="radios" role="radiogroup" aria-label=${t("sf.export_q")}>
-          ${modes.map((m) => radio(s.export_price_mode === m, t(`sf.exp.${m}`), t(`sf.exp.${m}_text`), () => this._set({ export_price_mode: m })))}
-        </div>
-        ${s.export_price_mode === "auto" && saved
-          ? html`<span class="help">${this.config.status.price_export_forecast ? t("sf.exp.auto_found") : t("sf.exp.auto_derived")}</span>`
+        ${entity
+          ? html`<div class="radios" role="radiogroup" aria-label=${t("sf.export_q")}>
+              ${radio(s.export_price_mode === "auto", t("sf.exp.auto"), t("sf.exp.auto_text"), () => this._set({ export_price_mode: "auto" }),
+                forecast !== null ? back(forecast, 0) : t("ex.auto"))}
+              ${radio(s.export_price_mode === "entity", t("sf.exp.entity"), t("sf.exp.entity_text"), () => this._set({ export_price_mode: "entity" }),
+                back(s.export_price_mode === "entity" ? this._state(s.export_price_entity) : null, 0.08))}
+              ${radio(s.export_price_mode === "fixed", t("sf.exp.fixed"), t("sf.exp.fixed_text"), () => this._set({ export_price_mode: "fixed" }),
+                back(s.export_price_mode === "fixed" ? s.export_price_fixed ?? null : null, 0.07))}
+            </div>`
           : nothing}
       </div>
-      ${s.export_price_mode === "entity"
+      ${s.export_price_mode === "entity" && entity
         ? html`<div class="sub"><ed-entity-select .hass=${this.hass} .label=${t("sf.export_entity")} required .value=${s.export_price_entity ?? null}
             .options=${this._priceOptions(s.export_price_entity)} .filter=${priceFilter}
             @value-changed=${(e: CustomEvent) => this._set({ export_price_entity: e.detail.value })}></ed-entity-select></div>`
         : nothing}
-      ${s.export_price_mode === "fixed"
-        ? html`<div class="sub">${this._money(t("sf.export_fixed"), s.export_price_fixed, t("sf.export_fixed_help"), (v) => this._set({ export_price_fixed: v }))}</div>`
+      ${s.export_price_mode === "fixed" || !entity
+        ? html`<div class=${entity ? "sub" : ""}>${this._money(t("sf.export_fixed"), s.export_price_fixed, t("sf.export_fixed_help"), (v) => this._set({ export_price_fixed: v, export_price_mode: "fixed" }))}</div>`
         : nothing}`;
   }
 }

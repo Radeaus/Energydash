@@ -101,6 +101,8 @@ export interface ConfigResult {
     price_scale: number;
     price_current: number | null;
     price_export_forecast?: boolean;
+    export_price_now?: number | null;
+    forecast_export_now?: number | null; // export price in the saved price entity's forecast, now
     import_now: number | null;
     house_since: string | null;
   };

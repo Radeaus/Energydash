@@ -5,10 +5,13 @@ import type { Hass, HassState } from "./api";
 import { shared } from "./styles";
 import { t } from "./i18n";
 
-/** Option card for a choice (role radio); the caller wraps a group in role="radiogroup". */
-export function radio(checked: boolean, title: string, text: string, onClick: () => void): TemplateResult {
+/**
+ * Option card for a choice (role radio); the caller wraps a group in role="radiogroup".
+ * `example`: one line showing what the choice does to the price, e.g. "€ 0,09 + € 0,17 = € 0,26".
+ */
+export function radio(checked: boolean, title: string, text: string, onClick: () => void, example?: string): TemplateResult {
   return html`<button class="radio" role="radio" aria-checked=${checked} @click=${onClick}>
-    <span class="dot"></span><div><b>${title}</b><span>${text}</span></div>
+    <span class="dot"></span><div><b>${title}</b><span>${text}</span>${example ? html`<span class="ex">${example}</span>` : nothing}</div>
   </button>`;
 }
 

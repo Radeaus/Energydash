@@ -76,7 +76,7 @@ export class EdOnboarding extends LitElement {
   static styles = [
     shared,
     css`
-      :host { display: block; max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+      :host { display: block; max-width: 760px; margin: 0 auto; padding: 24px 16px; }
       .stack { display: grid; gap: 16px; }
       .hero { text-align: center; display: grid; justify-items: center; gap: 8px; padding: 32px 16px; }
       .hero > ha-icon { --mdc-icon-size: 64px; color: var(--ed-pri); margin-bottom: 8px; }
