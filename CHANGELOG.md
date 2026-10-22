@@ -4,32 +4,34 @@
 
 Eerste versie.
 
-### Snelle start en instellingen
-- Snelle start bij de eerste keer openen: zoekt je stroommeters, stelt ze in uit de historie en toont ze als vinklijst met per apparaat wat er gevonden is ("5 sessies in 7 dagen, gemiddeld 1,1 kWh"), uitklapbaar met een mini-grafiek. Twijfelgevallen (alleen vermogen, teller in de auto, dubbele laadpaal) staan apart met de reden. Eén knop voegt alles toe en rekent het samen terug.
-- Stroomprijs: **prijs uit een entiteit** (met optionele opslag per kWh, bijvoorbeeld bij een kale beursprijs) of **vaste prijs** (één prijs of normaal en dal). Elke keuze toont een voorbeeld met je echte prijzen.
-- Zonnestroom waarderen als terugleverprijs, als niets of als stroomprijs, achteraf wisselbaar. Terugleverprijs uit je prijs-entiteit, een andere entiteit of een vast bedrag.
-- Meters uit het Energy-dashboard, met meerdere tellers per meter (normaal en dal, meerdere omvormers) opgeteld.
-- **Instellingen** als eigen pagina met dezelfde vragen als de snelle start; na wijzigen wordt de historie vanzelf opnieuw berekend. De installatie in Home Assistant vraagt niets: alles stel je in het paneel in.
-- **Geavanceerd instellen**: wizard **Apparaat toevoegen** (meter kiezen, soort, bronnen met gegevenscheck, sessies instellen met voorbeeld over 7 dagen).
+### Nieuw
 
-### Rekenen
-- Rekenkern volgens `docs/02-rekenmethode.md`: kWh-tellers (vermogen als fallback), tellerresets, zon/net per meetstap met de P1-importteller, tijdgewogen kwartierprijs.
-- Trage tellers (zoals de teller in een Tesla): een meetstap beslaat minstens de gebruikelijke verversingstijd, zodat er geen spookzon ontstaat. Met een opwekteller is zon per stap nooit meer dan wat de panelen in dat interval in huis leverden.
-- Stappen boven 25 kW (laden onderweg bij een teller in de auto) tellen niet mee.
-- Forecast-herkenning voor Zonneplan, Nord Pool en vergelijkbare formaten, met automatische schaalcorrectie. Voor de historie wordt de terugleverprijs afgeleid uit de stroomprijs als de recorder de forecast niet bewaart.
-- Sessies uit het verbruik (drempel, "klaar na" tot 4 uur, minimale duur), uit een entiteit (statussen) of doorlopend.
-- Sluipverbruik: per nacht het rustigste uur tussen 02:00 en 05:00, mediaan over 7 nachten, zonder apparaten met sessies.
-- Historie tot een jaar terug: de recorder aangevuld met de langetermijnstatistieken van Home Assistant, per uur.
-- Opslag in drie bestanden; open sessies en tussenstanden overleven een herstart.
-
-### Paneel
-- Dashboard per week (kalenderweek), maand en jaar, met kaarten voor kosten per dag, gemiddelde stroomprijs, wat je per kWh betaalt en **Zon** (aandeel eigen zon, opgewekt, teruggeleverd, bespaard).
-- Uitleg in een tooltip op elk getal.
-- Sessies met "Hoe is dit berekend?", Sluipverbruik, Apparaten met meetstappen, kleur en icoon per apparaat.
-- Testen en beheer: alles opnieuw berekenen, exporteren/importeren, gegevens wissen, terugzetten (rekent daarna vanzelf opnieuw).
-- Nederlands en Engels, licht/donker via het HA-thema, smalle schermen.
-
-### Integratie
-- Sensoren per apparaat (kosten vandaag, deze maand, laatste sessie) en voor het huis (totaal, rest, sluipverbruik).
-- Diagnostiek, Reparaties-melding bij verdwenen entiteiten, acties `energydash.recalculate` en `energydash.reset`.
-- Bij verwijderen van de integratie worden alle opgeslagen gegevens verwijderd.
+- Bij de eerste keer openen zoekt de snelle start je stroommeters, stelt ze in op basis van de historie en toont ze als vinklijst. Per apparaat zie je wat er gevonden is, zoals "5 sessies in 7 dagen, gemiddeld 1,1 kWh", met een kleine grafiek als je het uitklapt.
+- Twijfelgevallen, zoals een meter met alleen vermogen, een teller in de auto of een dubbele laadpaal, staan apart met de reden erbij.
+- Met één knop voeg je alle aangevinkte apparaten toe en worden ze samen teruggerekend.
+- Je kiest je stroomprijs als **Prijs uit een entiteit** (met een optionele opslag per kWh, bijvoorbeeld bij een kale beursprijs) of als **Vaste prijs** (**Eén prijs** of **Normaal en dal**). Elke keuze toont een voorbeeld met je eigen prijzen.
+- Je kiest wat stroom van je eigen zonnepanelen kost: **Wat je anders had gekregen**, **Niets** of **Hetzelfde als stroom uit het net**. Die keuze kun je achteraf wisselen.
+- De terugleverprijs komt uit je prijs-entiteit, uit een andere entiteit of uit een vast bedrag.
+- Je meters worden overgenomen uit het Energy-dashboard. Meerdere tellers per meter, zoals normaal en dal of meerdere omvormers, worden opgeteld.
+- **Instellingen** is een eigen pagina met dezelfde vragen als de snelle start. Na het opslaan wordt de historie vanzelf opnieuw berekend.
+- De installatie in Home Assistant vraagt niets: je stelt alles in het paneel in.
+- Met **Geavanceerd instellen** en **Apparaat toevoegen** kies je zelf de meter, de soort apparaat en de bronnen (met een gegevenscheck), en stel je sessies in met een voorbeeld over de laatste 7 dagen.
+- Kosten worden berekend met kWh-tellers, met vermogen als terugvaloptie. Tellerresets worden herkend. Zon en net worden per meetstap bepaald met de P1-importteller, en de prijs is tijdgewogen per kwartier. Alle regels staan in [de rekenmethode](docs/02-rekenmethode.md).
+- Bij trage tellers, zoals de teller in een Tesla, beslaat een meetstap minstens de gebruikelijke verversingstijd, zodat er geen zon wordt geteld die er niet was.
+- Met een opwekteller is de zon per meetstap nooit meer dan wat de panelen in dat interval in huis leverden.
+- Meetstappen boven 25 kW tellen niet mee, zodat laden onderweg niet meetelt bij een teller in de auto.
+- De verwachte prijzen van Zonneplan, Nord Pool en vergelijkbare formaten worden herkend, met automatische correctie van de eenheid.
+- Bewaart de recorder de verwachte prijzen niet, dan wordt de terugleverprijs voor de historie afgeleid uit de stroomprijs.
+- Sessies worden herkend uit het verbruik (drempel, "klaar na" tot 4 uur, minimale duur) of uit de status van een entiteit. Een apparaat kan ook doorlopend worden gevolgd.
+- Sluipverbruik is per nacht het rustigste uur tussen 02:00 en 05:00, als mediaan over 7 nachten en zonder apparaten met sessies.
+- De historie gaat tot een jaar terug: de recorder wordt aangevuld met de langetermijnstatistieken van Home Assistant, per uur.
+- Open sessies en tussenstanden blijven bewaard bij een herstart van Home Assistant.
+- Het dashboard toont een week (kalenderweek), maand of jaar, met kaarten voor de kosten per dag, de gemiddelde stroomprijs, wat je per kWh betaalt en **Zon** (aandeel eigen zon, opgewekt, teruggeleverd en bespaard).
+- Elk getal heeft een uitleg in een tooltip.
+- Elke sessie heeft **Hoe is dit berekend?**, en de tabbladen **Sluipverbruik** en **Apparaten** tonen de basislast, meetstappen en een kleur en icoon per apparaat.
+- Onder **Testen en beheer** kun je alles opnieuw berekenen, instellingen exporteren en importeren, berekende gegevens wissen en Energydash terugzetten.
+- Het paneel is in het Nederlands en Engels, volgt het lichte of donkere thema van Home Assistant en werkt op smalle schermen.
+- Per apparaat zijn er sensoren voor de kosten van vandaag, deze maand en de laatste sessie. Voor het huis zijn er sensoren voor de totale kosten, de rest van het huis en het sluipverbruik.
+- Er is diagnostiek om te downloaden, en een melding onder **Reparaties** als een gebruikte entiteit verdwenen is.
+- Met de acties `energydash.recalculate` en `energydash.reset` reken je opnieuw of wis je gegevens vanuit een automatisering.
+- Bij het verwijderen van de integratie worden alle opgeslagen gegevens ook verwijderd.
