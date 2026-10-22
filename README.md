@@ -20,7 +20,7 @@ For example, you can see what a car charging session cost, how much of it came f
 
 Energydash works in any country and currency that Home Assistant supports. It is available in English, Dutch, German, Spanish, and French, and follows the language of your Home Assistant profile.
 
-Current version: 1.0.7 (October 22, 2026). The [changelog](CHANGELOG.md) lists what is in each version.
+Current version: 1.0.8 (October 22, 2026). The [changelog](CHANGELOG.md) lists what is in each version.
 
 ## Supported devices
 

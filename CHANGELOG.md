@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.8 – October 22, 2026
+
+Nothing changes in how Energydash works or calculates. You only need this update if you want the version number to match.
+
+### New
+
+- A [live demo](https://radeaus.github.io/Energydash/) shows the panel with a simulated household in your browser, in all five languages, without Home Assistant.
+- Energydash is now released under the MIT License.
+
 ## 1.0.7 – October 22, 2026
 
 ### Before you update
