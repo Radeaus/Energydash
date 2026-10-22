@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3 – October 22, 2026
+
+### New
+
+- The dashboard has an **Energy distribution** card, like the Home Assistant Energy dashboard: a flow diagram of solar, grid, and home, the **Grid balance**, and gauges for **Net imported from the grid**, **Self-consumed solar**, and **Self-sufficiency**.
+- **Cost per day** shows below the line what your solar panels were worth each day: the grid power you didn't have to buy and your export earnings. Selecting a day shows the solar kWh and both amounts.
+
 ## 1.0.2 – October 22, 2026
 
 ### Improved

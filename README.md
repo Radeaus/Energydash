@@ -62,7 +62,7 @@ Under **Testing and maintenance** you'll find:
 
 ### Panel
 
-- **Dashboard**: costs per week, month, and year, with cost per day, the average electricity price, what you pay per kWh, and a **Solar** card (share of own solar, produced, exported, saved). Every number has an explanation.
+- **Dashboard**: costs per week, month, and year, with cost per day, the average electricity price, what you pay per kWh, and a **Solar** card (share of own solar, produced, exported, saved). **Energy distribution** shows how power flowed between your solar panels, the grid, and your home, with the grid balance, the net import, the share of solar you used yourself, and your self-sufficiency. Below the line in **Cost per day**, you see what your solar panels were worth each day: grid power you didn't have to buy plus export earnings. Every number has an explanation.
 - **Sessions**: every wash cycle or charging session with energy, cost, solar, and grid. **How is this calculated?** shows the breakdown per quarter hour.
 - **Baseload**: what your house uses at night, per day, month, and year.
 - **Devices**: your devices with color, icon, data check, and the latest counter steps.

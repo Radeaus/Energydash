@@ -167,7 +167,8 @@ export interface Summary {
   first_day: string;
   last_day: string;
   period: Period;
-  days: { date: string; series: Record<string, Numbers> }[];
+  // solar: kWh used directly and the grid power that saved (value), export and its earnings
+  days: { date: string; series: Record<string, Numbers>; solar: { kwh: number; value: number; export_kwh: number; export_value: number } }[];
   totals: Record<string, Numbers>;
   has_house: boolean;
   export: { available: boolean; kwh: number; value: number };

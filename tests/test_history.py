@@ -121,3 +121,17 @@ def test_empty_export_series_survives_storage():
     loaded = Aggregator(recent)
     loaded.merge(archive)
     assert EXPORT_KEY in loaded.hours
+
+
+def test_summary_solar_per_day():
+    """Per day: solar used directly with the grid power it saved, and export with its earnings."""
+    agg = Aggregator()
+    agg.hours[HOUSE_KEY] = {
+        "2026-10-19T12": [3.0, 2.0, 0.3, 0.9, 0.16],
+        "2026-10-20T12": [1.0, 0.0, 0.3, 0.3, 0.0],
+    }
+    agg.hours[EXPORT_KEY] = {"2026-10-19T13": [4.0, 0.0, 0.0, 0.0, 0.32]}
+    s = agg.summary([], date(2026, 10, 19), 2, SOLAR_MODE_FREE)
+    first, second = s["days"]
+    assert first["solar"] == pytest.approx({"kwh": 2.0, "value": 0.6, "export_kwh": 4.0, "export_value": 0.32})
+    assert second["solar"] == {"kwh": 0.0, "value": 0.0, "export_kwh": 0.0, "export_value": 0.0}

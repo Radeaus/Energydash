@@ -178,6 +178,7 @@ class Aggregator:
         row_key = (lambda day: f"{day[:7]}-01") if by_month else (lambda day: day)  # noqa: E731
         day_rows: dict[str, dict[str, list[float]]] = {row_key(d.isoformat()): defaultdict(_zero) for d in day_keys}
         totals: dict[str, list[float]] = defaultdict(_zero)
+        day_whole: dict[str, list[float]] = defaultdict(_zero)  # whole house per row, for the solar part
         profile = [[0.0, 0.0] for _ in range(24)]  # kWh, all-net value
         for key, by_series in per_hour.items():
             day = row_key(key[:10])
@@ -199,17 +200,32 @@ class Aggregator:
                 add_fields(totals[HOUSE_KEY], whole)
             else:
                 whole = dev_sum
+            add_fields(day_whole[day], whole)
             profile[hour][0] += whole[F_KWH]
             profile[hour][1] += whole[F_ALL_NET]
         if not has_house:
             totals[HOUSE_KEY] = add_fields(_zero(), [sum(totals[i][f] for i in ids) for f in range(N_FIELDS)])
 
         exported = self.sum_range(EXPORT_KEY, start_key, end_key)
+        day_export: dict[str, list[float]] = defaultdict(_zero)
+        for key, vals in self.series_hours(EXPORT_KEY, start_key, end_key).items():
+            add_fields(day_export[row_key(key[:10])], vals)
+
+        def solar(d: str) -> dict[str, float]:
+            """What the panels gave per row: kWh used directly with the grid power it saved, and export with its earnings."""
+            whole, exp = day_whole[d], day_export[d]
+            return {
+                "kwh": round(whole[F_ZON], 4),
+                "value": round(whole[F_ALL_NET] - whole[F_NET_COST], 4),
+                "export_kwh": round(exp[F_KWH], 4),
+                "export_value": round(exp[F_ZON_EXPORT], 4),
+            }
+
         n_days = max(days, 1)
         return {
             "first_day": day_keys[0].isoformat(),
             "days": [
-                {"date": d, "series": {sid: describe(v, solar_mode) for sid, v in rows.items()}}
+                {"date": d, "series": {sid: describe(v, solar_mode) for sid, v in rows.items()}, "solar": solar(d)}
                 for d, rows in day_rows.items()
             ],
             "totals": {sid: describe(v, solar_mode) for sid, v in totals.items()},

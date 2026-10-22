@@ -63,7 +63,7 @@ The panel receives `hass`, `narrow`, `route`, and `panel`. It must provide its o
 | `energydash/quality` | Data check for a chosen source |
 | `energydash/preview_sessions` | History of a source + detected sessions at given thresholds (for "mark an example") |
 | `energydash/sessions` | Sessions with breakdown per quarter hour |
-| `energydash/summary` | Dashboard data per period: calendar week (up to and including today), month, or year; per device, rest, solar/grid, export, per hour |
+| `energydash/summary` | Dashboard data per period: calendar week (up to and including today), month, or year; per device, rest, solar/grid, export, per hour; per day also `solar` (self-used kWh and the grid cost it saved, export kWh and earnings) |
 | `energydash/baseload` | Baseload and breakdown |
 | `energydash/subscribe` | Live updates to the panel |
 | `energydash/settings/save` | Save price, meters, solar, and export (admin); with `recalculate: true` everything is recalculated afterwards |

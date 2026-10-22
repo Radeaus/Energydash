@@ -52,6 +52,7 @@ export function deviceColor(index: number | string | null | undefined, dark: boo
 
 export const colors = (dark: boolean) => ({
   zon: dark ? "#c94e00" : "#f36d00",
+  exp: dark ? "#e8a06a" : "#f7ad6e", // solar export: a lighter shade of the solar color
   net: "#488fc2",
   rest: dark ? "#7a7a7a" : "#989898",
 });
