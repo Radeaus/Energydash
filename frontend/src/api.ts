@@ -135,6 +135,18 @@ export interface Preview {
   sessions: { start: string; end: string; minutes: number; kwh: number | null }[];
 }
 
+export type SuggestReason = "in_prefs" | "device" | "no_history" | "no_sessions" | "power_only" | "in_car" | "data" | "loose" | "duplicate_charger";
+
+export interface Suggestion {
+  device: Device;
+  candidate: Candidate;
+  summary: { days: number; sessions: number | null; kwh_avg: number | null; avg_w: number | null; kwh_day: number | null; spark: number[] };
+  checked: boolean;
+  reason: SuggestReason;
+  in_energy_prefs: boolean;
+  area: string | null;
+}
+
 export type Period = "week" | "month" | "year";
 
 export interface Summary {
@@ -177,6 +189,7 @@ export const api = {
   config: (h: Hass) => h.callWS<ConfigResult>({ type: "energydash/config" }),
   saveSettings: (h: Hass, settings: Settings) => h.callWS<{ settings: Settings }>({ type: "energydash/settings/save", settings }),
   discover: (h: Hass) => h.callWS<{ suggested: Candidate[]; others: Candidate[] }>({ type: "energydash/discover" }),
+  suggest: (h: Hass) => h.callWS<{ items: Suggestion[]; days: number }>({ type: "energydash/suggest" }),
   analyze: (h: Hass, req: { energy_entity: string; energy_is_power?: boolean; power_entity?: string | null; session_entity?: string | null }) =>
     h.callWS<Analysis>({ type: "energydash/analyze", ...req }),
   preview: (h: Hass, dev: Device) =>
@@ -194,6 +207,7 @@ export const api = {
     }),
   saveDevice: (h: Hass, device: Device, recalculate = true) =>
     h.callWS<{ device: Device }>({ type: "energydash/devices/save", device, recalculate }),
+  saveDevices: (h: Hass, devices: Device[]) => h.callWS<{ devices: Device[] }>({ type: "energydash/devices/save_many", devices }),
   deleteDevice: (h: Hass, device_id: string) => h.callWS({ type: "energydash/devices/delete", device_id }),
   recalculate: (h: Hass, device_id?: string) =>
     h.callWS({ type: "energydash/recalculate", ...(device_id ? { device_id } : {}) }),

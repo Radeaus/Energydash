@@ -24,9 +24,14 @@ Eén stap met:
 - **Wat kost stroom van je eigen zonnepanelen?** * (select-box): Wat je anders had gekregen / Niets / Hetzelfde als stroom uit het net. Helptekst: "Geldt voor alle apparaten. Zon gaat eerst naar de rest van het huis; alleen wat daarna over is telt als zon voor het apparaat."
 - Knop **Verzenden** → "Gelukt! Energydash is ingesteld. Je vindt het nu in de zijbalk." → **Voltooien**.
 
-### 2. Paneel, eerste keer (empty state)
-- Icoon 64 px, kop (h2) **"Nog geen apparaten"**, tekst "Voeg een apparaat toe om te zien wat een wasbeurt, een laadsessie of je sluipverbruik kost.", knop **Apparaat toevoegen**.
-- Daaronder kaart **Ontdekt**: gevonden apparaten met herkomst ("In je Energy-dashboard · Energy Socket, Zolder") en knop **Toevoegen**. Bij alleen vermogen een chip "Alleen vermogen".
+### 2. Paneel, eerste keer: snelle start (`ed-onboarding`)
+Doel: een nieuwe gebruiker heeft in twee klikken zijn apparaten, zonder te weten wat tellers, soorten of bronnen zijn. Alles wat niet nodig is, staat er niet.
+1. **Start**: icoon 64 px, kop **"Zien wat je apparaten kosten"**, één zin uitleg, knop **Wizard starten**, daaronder tekstknop **Geavanceerd instellen** (opent de wizard van flow 3). Onder de kaart de privacyzin. Geen beheerder: alleen uitleg.
+2. **Even zoeken…**: drie regels met vinkjes (Energy-dashboard lezen, stroommeters zoeken, historie bekijken), zodat het wachten iets vertelt.
+3. **Gevonden**: vinklijst. Aangevinkt staat alleen wat zeker goed is (regels in docs/03 "Snelle start"). Per regel: naam, soort en in één regel wat we vonden ("5 sessies in 7 dagen, gemiddeld 1,1 kWh", "Gemiddeld 48 W, 1,2 kWh per dag"). Uitklappen toont een mini-grafiek van het vermogen, de herkomst en **Aanpassen** (opent flow 3 met het voorstel). Daaronder **Ook gevonden**, niet aangevinkt, met de reden in één zin ("Meet in de auto: … Je laadpaal meet beter."). Knop **{n} apparaten toevoegen**.
+4. **Klaar**: "{n} apparaten toegevoegd", dat we terugrekenen, dat sluipverbruik al werkt zonder apparaat, en knop **Naar het dashboard**.
+- Niets gevonden: "Geen stroommeters gevonden" met **Zelf een meter kiezen** (flow 3) en **Opnieuw zoeken**.
+- De snelle start blijft staan zolang hij loopt, ook als via Aanpassen al een apparaat is toegevoegd; die regel krijgt dan "Toegevoegd".
 
 ### 3. Apparaat toevoegen (adaptive dialog, stappen)
 1. **Kies een stroommeter** (alleen via de knop, niet via Ontdekt): zoekveld met zichtbaar label "Zoeken", lijst met chip "kWh-teller" of "Alleen vermogen". Geen resultaten → "Geen resultaten – Pas je zoekterm aan".

@@ -30,6 +30,22 @@ De integratie stelt apparaten en bronnen voor; de gebruiker beslist. Elk voorste
 - **Sessies**: herhaaldelijk aan → standby, met duidelijke blokken (wasmachine 5× in 7 dagen, 80–95 min).
 - **Laadpaal**: naam/apparaat bevat "laadpaal"/"charger"/"wallbox"/"EVSE", of meerdere keren > 1 uur boven 7 kW.
 
+## Snelle start (`onboarding.py`, `energydash/suggest`)
+Voor elke gevonden meter (maximaal 20) draait dezelfde analyse als in de wizard: soort, sessie-entiteit en statussen (laadpaal), drempels en "Klaar na" uit 7 dagen historie, en het sessievoorbeeld. Het resultaat is een kant-en-klaar apparaat plus een oordeel.
+
+| Oordeel | Wanneer | Aangevinkt |
+|---|---|---|
+| `in_prefs` | In het Energy-dashboard, data in orde | ja |
+| `device` | Teller van een apparaat (stekker), niet in het Energy-dashboard, met historie en sessies | ja |
+| `no_history` / `no_sessions` | Nog geen historie, of sessie-apparaat zonder sessies in 7 dagen | alleen als in het Energy-dashboard |
+| `power_only` | Alleen vermogen | nee |
+| `in_car` | Teller in de auto (laadverlies telt niet, laden onderweg wel) | nee |
+| `data` | Gegevenscheck met "niet aanbevolen" | nee |
+| `loose` | Hoort niet bij een apparaat en staat niet in het Energy-dashboard | nee |
+| `duplicate_charger` | Tweede laadpaal-teller naast een aangevinkte (meet dezelfde sessies) | nee |
+
+Een laadpaal krijgt sessies uit de status-entiteit als die gevonden wordt en er statussen zijn waarin de teller opliep; anders sessies uit het verbruik met "Klaar na" minstens 60 minuten. Doorlopende apparaten tonen het gemiddelde uit de teller (kWh per dag), niet uit de grafiekreeks.
+
 ## Gegevenscheck (per gekozen bron)
 Wordt getoond in de wizard en bij het apparaat. Elke regel: status (ok / beperking / niet aanbevolen), waarde, gevolg in gewone taal.
 

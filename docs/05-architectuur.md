@@ -19,7 +19,8 @@ Energydash/
 │   ├── aggregate.py         # PUUR: uurbuckets per reeks, sessies, dashboard/sluipverbruik-queries
 │   ├── replay.py            # PUUR: recorder-historie door de trackers halen (terugrekenen)
 │   ├── discovery_rules.py   # PUUR: filters en soort-voorstel (docs/03)
-│   ├── discovery.py         # HA: meters vinden, gegevenscheck, sessievoorbeeld
+│   ├── discovery.py         # HA: meters vinden, gegevenscheck, sessievoorbeeld, snelle start
+│   ├── onboarding.py        # PUUR: snelle start, voorstel → apparaat + oordeel (docs/03)
 │   ├── backfill.py          # PUUR: uurstatistieken van vóór de recorder omrekenen
 │   ├── history.py           # HA: recorder-historie (compact formaat) en uurstatistieken ophalen
 │   ├── coordinator.py       # HA: state listeners, timers, prijzen, opslaan, terugrekenen, resets
@@ -31,11 +32,12 @@ Energydash/
 │   ├── services.yaml, icons.json, strings.json, translations/{nl,en}.json
 │   └── frontend/energydash-panel.js   # gebundelde output van /frontend
 ├── frontend/                # TypeScript + Lit, gebundeld met esbuild
-│   └── src/panel.ts, views.ts, dialogs.ts, components.ts, api.ts, i18n.ts, format.ts, styles.ts
+│   └── src/panel.ts, views.ts, dialogs.ts, onboarding.ts, components.ts, api.ts, i18n.ts, format.ts, styles.ts
 └── tests/                   # draaien zonder Home Assistant (conftest laadt de pure modules)
     ├── test_engine.py       # testcases uit docs/02 §7, prijzen, tracker, herstart
     ├── test_replay.py       # terugrekenen: laadpaal met zon, wasmachine met wegpompen, huis
-    └── test_discovery.py    # filters op de scan van de eigen HA
+    ├── test_discovery.py    # filters op de scan van de eigen HA
+    └── test_onboarding.py   # snelle start: apparaat bouwen, aanvinken, dubbele laadpaal
 ```
 
 ## Paneel registreren
@@ -54,6 +56,8 @@ Het paneel krijgt `hass`, `narrow`, `route` en `panel`. Het moet zelf een kopbal
 |---|---|
 | `energydash/config` | Instellingen (prijs, P1, zonkeuze) lezen |
 | `energydash/discover` | Voorgestelde apparaten + redenen |
+| `energydash/suggest` | Snelle start: elke gevonden meter als kant-en-klaar apparaat, met samenvatting en oordeel (beheerder) |
+| `energydash/devices/save_many` | Meerdere nieuwe apparaten opslaan en samen terugrekenen (beheerder) |
 | `energydash/devices/list` / `save` / `delete` | Apparaten beheren |
 | `energydash/quality` | Gegevenscheck voor een gekozen bron |
 | `energydash/preview_sessions` | Historie van een bron + gedetecteerde sessies bij gegeven drempels (voor "voorbeeld aanwijzen") |

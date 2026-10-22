@@ -29,7 +29,7 @@ from .const import (
     VERSION,
 )
 from .coordinator import EnergydashCoordinator
-from .discovery import async_analyze, async_discover, async_preview
+from .discovery import async_analyze, async_discover, async_preview, async_suggest
 
 SETTINGS_KEYS = (
     CONF_CONTRACT, CONF_PRICE_ENTITY, CONF_PRICE_NORMAL, CONF_PRICE_LOW, CONF_IMPORT_ENTITY, CONF_EXPORT_ENTITY,
@@ -51,7 +51,7 @@ def _guard(hass: HomeAssistant, connection, msg) -> EnergydashCoordinator | None
 @callback
 def async_register(hass: HomeAssistant) -> None:
     for handler in (
-        ws_config, ws_settings_save, ws_discover, ws_analyze, ws_preview, ws_devices_save, ws_devices_delete,
+        ws_config, ws_settings_save, ws_discover, ws_suggest, ws_analyze, ws_preview, ws_devices_save, ws_devices_save_many, ws_devices_delete,
         ws_recalculate, ws_sessions, ws_summary, ws_baseload, ws_steps, ws_subscribe, ws_reset, ws_export, ws_import,
     ):
         websocket_api.async_register_command(hass, handler)
@@ -114,6 +114,17 @@ async def ws_discover(hass, connection, msg):
     connection.send_result(msg["id"], await async_discover(hass, coord.settings, used))
 
 
+@websocket_api.websocket_command({vol.Required("type"): "energydash/suggest"})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_suggest(hass, connection, msg):
+    coord = _guard(hass, connection, msg)
+    if coord is None:
+        return
+    used = {d["energy_entity"] for d in coord.devices}
+    connection.send_result(msg["id"], await async_suggest(hass, coord.settings, used))
+
+
 @websocket_api.websocket_command({
     vol.Required("type"): "energydash/analyze",
     vol.Required("energy_entity"): str,
@@ -165,6 +176,30 @@ async def ws_devices_save(hass, connection, msg):
         connection.send_error(msg["id"], "invalid", str(err))
         return
     connection.send_result(msg["id"], {"device": dev})
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "energydash/devices/save_many",
+    vol.Required("devices"): [dict],
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_devices_save_many(hass, connection, msg):
+    """Quick start: add several new devices and recalculate them in one go."""
+    coord = _guard(hass, connection, msg)
+    if coord is None:
+        return
+    saved = []
+    try:
+        for raw in msg["devices"]:
+            saved.append(await coord.async_save_device({k: v for k, v in raw.items() if k != "id"}, False))
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid", str(err))
+        return
+    finally:
+        if saved:
+            coord.start_task(coord.async_recalculate([d["id"] for d in saved]), "quick_start")
+    connection.send_result(msg["id"], {"devices": saved})
 
 
 @websocket_api.websocket_command({

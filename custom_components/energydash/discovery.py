@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 from typing import Any
@@ -41,10 +42,13 @@ from .history import (
     text_series,
     unit_of,
 )
+from .onboarding import assess, build_device, mark_duplicates, order, pick_type, summarize
 from .sessions import detect_power_sessions, suggest_power_settings
 
 _LOGGER = logging.getLogger(__name__)
 ANALYZE_DAYS = 7
+SUGGEST_MAX = 20  # quick start looks at this many meters at most; the rest is in the advanced wizard
+SUGGEST_PARALLEL = 4
 
 
 async def async_energy_prefs(hass: HomeAssistant) -> dict[str, Any]:
@@ -395,6 +399,8 @@ async def async_preview(hass: HomeAssistant, req: dict[str, Any]) -> dict[str, A
             end,
         )
     counter = StepLookup(energy) if energy else None
+    kwh_total = sum(b - a if b >= a else b for (_, a), (_, b) in zip(energy, energy[1:])) if energy else None
+    kwh_hours = (end - energy[0][0]).total_seconds() / 3600 if energy else None
     sessions = []
     for a, b in found:
         kwh = None
@@ -411,4 +417,44 @@ async def async_preview(hass: HomeAssistant, req: dict[str, Any]) -> dict[str, A
                 t += timedelta(minutes=1)
             kwh = round(total, 3)
         sessions.append({"start": a.isoformat(), "end": b.isoformat(), "minutes": round((b - a).total_seconds() / 60), "kwh": kwh})
-    return {"start": start.isoformat(), "end": end.isoformat(), "power": downsample(power, start, end), "sessions": sessions}
+    return {
+        "start": start.isoformat(), "end": end.isoformat(), "power": downsample(power, start, end), "sessions": sessions,
+        "kwh": round(kwh_total, 3) if kwh_total is not None else None, "kwh_hours": round(kwh_hours, 2) if kwh_hours else None,
+    }
+
+
+async def async_suggest(hass: HomeAssistant, settings: dict[str, Any], used: set[str]) -> dict[str, Any]:
+    """Quick start: every discovered meter as a ready device, with a verdict whether to add it (docs/03)."""
+    found = await async_discover(hass, settings, used)
+    cands = (found["suggested"] + found["others"])[:SUGGEST_MAX]
+    sem = asyncio.Semaphore(SUGGEST_PARALLEL)
+
+    async def one(cand: dict[str, Any]) -> dict[str, Any] | None:
+        async with sem:
+            try:
+                return await _suggest_one(hass, cand)
+            except Exception:  # noqa: BLE001 - one odd meter must not break the list
+                _LOGGER.exception("Quick start could not check %s", cand["entity_id"])
+                return None
+
+    items = [i for i in await asyncio.gather(*(one(c) for c in cands)) if i]
+    mark_duplicates(items)
+    return {"items": order(items), "days": ANALYZE_DAYS}
+
+
+async def _suggest_one(hass: HomeAssistant, cand: dict[str, Any]) -> dict[str, Any]:
+    req = {"energy_entity": cand["entity_id"], "energy_is_power": cand["power_only"], "power_entity": None if cand["power_only"] else cand["power_entity"]}
+    analysis = await async_analyze(hass, req)
+    session_entity, session_states = None, None
+    if pick_type(cand, analysis) == TYPE_CHARGER and analysis["session_candidates"]:
+        session_entity = analysis["session_candidates"][0]["entity_id"]
+        with_entity = await async_analyze(hass, {**req, "session_entity": session_entity})
+        session_states = with_entity.get("session_suggested_states") or []
+    device = build_device(cand, analysis, session_entity, session_states)
+    preview = await async_preview(hass, {**device, "days": ANALYZE_DAYS})
+    summary = summarize(device, preview, ANALYZE_DAYS)
+    checked, reason = assess(cand, analysis, device, summary)
+    return {
+        "device": device, "candidate": cand, "summary": summary, "checked": checked, "reason": reason,
+        "in_energy_prefs": cand["in_energy_prefs"], "area": cand["area"],
+    }

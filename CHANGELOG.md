@@ -1,5 +1,11 @@
 # Changelog
 
+## Nog niet uitgebracht
+
+### Paneel
+- Nieuwe snelle start bij de eerste keer openen. **Wizard starten** zoekt je stroommeters, stelt ze zelf in uit de historie en laat ze zien als vinklijst: per apparaat wat we vonden ("5 sessies in 7 dagen, gemiddeld 1,1 kWh"), uitklapbaar met een mini-grafiek. Twijfelgevallen (alleen vermogen, teller in de auto, dubbele laadpaal) staan apart met de reden. Eén knop voegt alles toe en rekent het samen terug.
+- **Geavanceerd instellen** opent de bestaande wizard; **Aanpassen** op een regel opent die wizard met het voorstel.
+
 ## 1.2.0 – 22 oktober 2026
 
 ### Rekenen

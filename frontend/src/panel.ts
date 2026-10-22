@@ -4,6 +4,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { api, type Candidate, type ConfigResult, type Device, type Hass, type Session } from "./api";
 import { define } from "./components";
 import "./dialogs";
+import "./onboarding";
 import { download, setLocale } from "./format";
 import { setLanguage, t } from "./i18n";
 import { shared } from "./styles";
@@ -34,6 +35,7 @@ class EnergydashPanel extends LitElement {
   declare _toast: string;
   declare _tick: number;
   declare _error: string;
+  declare _onboarding: boolean;
 
   static properties = {
     hass: { attribute: false },
@@ -47,6 +49,7 @@ class EnergydashPanel extends LitElement {
     _toast: { state: true },
     _tick: { state: true },
     _error: { state: true },
+    _onboarding: { state: true },
   };
 
   private _unsub?: Promise<() => void>;
@@ -63,6 +66,7 @@ class EnergydashPanel extends LitElement {
     this._toast = "";
     this._tick = 0;
     this._error = "";
+    this._onboarding = false;
     try {
       const saved = window.localStorage.getItem("energydash.tab") as Tab | null;
       if (saved && ["dashboard", "sessions", "baseload", "devices"].includes(saved)) this._tab = saved;
@@ -153,9 +157,6 @@ class EnergydashPanel extends LitElement {
       :host([narrow]) nav { position: fixed; bottom: 0; left: 0; right: 0; top: auto; justify-content: space-around; border-top: 1px solid var(--ed-line); border-bottom: none; padding: 6px 4px; }
       :host([narrow]) nav button { flex-direction: column; gap: 2px; font-size: 11px; padding: 6px 8px; }
       :host([narrow]) main { padding-bottom: 72px; }
-      .empty { max-width: 720px; margin: 0 auto; padding: 32px 16px; display: grid; gap: 16px; }
-      .hero { text-align: center; display: grid; justify-items: center; gap: 8px; padding: 24px 8px; }
-      .hero > ha-icon { --mdc-icon-size: 64px; color: var(--ed-text2); }
       .banner { max-width: 1200px; margin: 12px auto 0; padding: 0 16px; }
       .toast {
         position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20; background: var(--ed-text); color: var(--ed-card);
@@ -188,7 +189,7 @@ class EnergydashPanel extends LitElement {
     const ctx = this._ctx;
     return html`${toolbar}
       ${busy ? html`<div class="banner"><div class="alert info"><ha-icon icon="mdi:progress-clock"></ha-icon>${t("busy")}</div></div>` : nothing}
-      ${cfg.devices.length === 0
+      ${cfg.devices.length === 0 || this._onboarding
         ? this._renderEmpty()
         : html`<nav role="tablist">${tabs.map(([id, label, icon]) => html`<button role="tab" aria-selected=${this._tab === id} @click=${() => this._setTab(id)}><ha-icon icon=${icon}></ha-icon>${label}</button>`)}</nav>
             <main
@@ -208,17 +209,13 @@ class EnergydashPanel extends LitElement {
       ${this._toast ? html`<div class="toast" role="status">${this._toast}<button class="icon" style="color:inherit;padding:2px" aria-label=${t("c.close")} @click=${() => (this._toast = "")}><ha-icon icon="mdi:close"></ha-icon></button></div>` : nothing}`;
   }
 
+  // Quick start stays on screen once started, also after the first device is added, until the user leaves it.
   private _renderEmpty() {
-    const cfg = this._config!;
-    return html`<div class="empty">
-      <div class="card hero">
-        <ha-icon icon="mdi:cash-clock"></ha-icon>
-        <h2>${t("empty.title")}</h2>
-        <p class="muted">${t("empty.text")}</p>
-        ${cfg.is_admin ? html`<button class="btn" @click=${() => (this._dialog = { kind: "add" })}><ha-icon icon="mdi:plus"></ha-icon>${t("c.add_device")}</button>` : html`<p class="muted small">${t("c.admin_only")}</p>`}
-      </div>
-      <p class="muted small" style="text-align:center">${t("local")}</p>
-    </div>`;
+    return html`<ed-onboarding .ctx=${this._ctx}
+      @started=${() => (this._onboarding = true)}
+      @finished=${() => { this._onboarding = false; this._setTab("dashboard"); }}
+      @advanced=${() => (this._dialog = { kind: "add" })}
+      @adjust=${(e: CustomEvent) => (this._dialog = { kind: "add", candidate: e.detail })}></ed-onboarding>`;
   }
 
   private _renderDialog(ctx: Ctx) {
