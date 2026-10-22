@@ -357,6 +357,7 @@ class HouseTracker:
     def __init__(self) -> None:
         self.last: dict[str, float | None] = {"import": None, "export": None, "solar": None}
         self.last_time: datetime | None = None
+        self.exported = 0.0  # export (kWh) of the last step, for the solar figures
 
     def tick(
         self,
@@ -376,11 +377,12 @@ class HouseTracker:
             return None
         d_imp, _ = counter_delta(self.last["import"], import_kwh)
         house = d_imp
+        d_exp = 0.0
+        if export_kwh is not None and self.last["export"] is not None:
+            d_exp, _ = counter_delta(self.last["export"], export_kwh)
+        self.exported = d_exp
         if solar_kwh is not None and self.last["solar"] is not None:
             d_sol, _ = counter_delta(self.last["solar"], solar_kwh)
-            d_exp = 0.0
-            if export_kwh is not None and self.last["export"] is not None:
-                d_exp, _ = counter_delta(self.last["export"], export_kwh)
             house += max(d_sol - d_exp, 0.0)
         step = build_step(self.last_time, t, house, d_imp, prices)
         self.last = {

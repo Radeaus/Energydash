@@ -5,7 +5,7 @@ import { api, sessionCost, type Baseload, type ConfigResult, type Device, type H
 import { colors, conic, dateTime, day, deviceColor, eur, minutesBetween, num, pct, time } from "./format";
 import { t } from "./i18n";
 import { shared } from "./styles";
-import { fire } from "./components";
+import { fire, TipController } from "./components";
 
 export interface Ctx {
   hass: Hass;
@@ -17,16 +17,22 @@ export interface Ctx {
 
 export const TYPE_ICON: Record<string, string> = { sessions: "mdi:washing-machine", continuous: "mdi:server", charger: "mdi:ev-station" };
 
-export function deviceInfo(ctx: Ctx, id: string): { name: string; color: string; type: string } {
+export function deviceInfo(ctx: Ctx, id: string): { name: string; color: string; type: string; icon: string } {
   const c = colors(ctx.dark);
-  if (id === "_rest") return { name: t("d.rest"), color: c.rest, type: "rest" };
+  if (id === "_rest") return { name: t("d.rest"), color: c.rest, type: "rest", icon: "mdi:home" };
   const idx = ctx.config.devices.findIndex((d) => d.id === id);
   if (idx >= 0) {
     const d = ctx.config.devices[idx];
-    return { name: d.name, color: deviceColor(d.color ?? idx, ctx.dark), type: d.type };
+    return { name: d.name, color: deviceColor(d.color ?? idx, ctx.dark), type: d.type, icon: d.icon || TYPE_ICON[d.type] };
   }
   const arch = ctx.config.archived.find((a) => a.id === id);
-  return { name: arch?.name ?? id, color: c.rest, type: arch?.type ?? "sessions" };
+  const type = arch?.type ?? "sessions";
+  return { name: arch?.name ?? id, color: c.rest, type, icon: TYPE_ICON[type] ?? "mdi:flash" };
+}
+
+/** A number that explains itself on hover or focus (see TipController). */
+export function tipped(value: string | TemplateResult, tip: string): TemplateResult {
+  return html`<span tabindex="0" data-tip=${tip}>${value}</span>`;
 }
 
 export function ruleText(ctx: Ctx, d: Device): string {
@@ -79,6 +85,10 @@ const cardCss = css`
   .empty ha-icon { --mdc-icon-size: 64px; color: var(--ed-text2); }
   .icon-bubble { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--ed-pri) 10%, transparent); color: var(--ed-pri); }
   .cost { font-variant-numeric: tabular-nums; font-weight: 500; }
+  .solar { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; font-size: 14px; flex: 1; min-width: 200px; }
+  .solar > :nth-child(odd) { color: var(--ed-text2); }
+  .solar > :nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; }
+  .readout .it { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; }
   .fab { position: fixed; right: 24px; bottom: 24px; box-shadow: 0 4px 12px rgba(0,0,0,.25); z-index: 2; }
 `;
 
@@ -106,6 +116,7 @@ export class EdDashboard extends LitElement {
 
   constructor() {
     super();
+    new TipController(this);
     this._period = "month";
     this._offset = 0;
     this._data = null;
@@ -156,21 +167,32 @@ export class EdDashboard extends LitElement {
     const kwh = house?.kwh ?? 0;
     const prev = d.previous_total;
     const delta = prev && prev > 0.01 && d.has_house ? Math.round(((total - prev) / prev) * 100) : null;
-    const below = house && house.all_net > 0.001 ? Math.round((1 - house.cost / house.all_net) * 100) : 0;
-    const saved = house ? house.all_net - house.cost : 0;
     const gridKwh = house?.net ?? 0;
     // Average price of the power actually bought: grid cost / grid kWh, weighted by when it was bought.
     const gridPrice = gridKwh > 0.01 ? house!.net_cost / gridKwh : null;
+    const days = Math.max(daysWithData, 1);
+    const hasSolar = zonKwh > 0.001 || d.export.available || !!this.ctx.config.settings.solar_entity;
 
     const kpis = [
-      { label: t(d.has_house ? "d.kpi_total" : "d.kpi_devices"), value: eur(total), sub: delta === null ? "" : `${delta <= 0 ? "↓" : "↑"} ${Math.abs(delta)}% ${t(`d.vs_${this._period}`)}` },
-      { label: t("d.kpi_avg_day"), value: eur(total / Math.max(daysWithData, 1)), sub: t("d.over_days", { n: daysWithData }) },
-      { label: t("d.kpi_grid_price"), value: gridPrice !== null ? eur(gridPrice, 3) : "—", sub: t("d.grid_price_sub", { kwh: num(gridKwh, 0) }) },
-      { label: t("d.kpi_saved"), value: mode === "grid" ? "—" : eur(saved), sub: mode === "grid" ? t("d.zon_as_grid") : below > 0 ? t("d.zon_used_below", { kwh: num(zonKwh, 0), p: below }) : t("d.zon_used", { kwh: num(zonKwh, 0) }) },
+      {
+        label: t(d.has_house ? "d.kpi_total" : "d.kpi_devices"),
+        value: tipped(eur(total), t(d.has_house ? "d.tip_total" : "d.tip_devices", { kwh: num(kwh, 1), mode: t(`d.mode.${mode}`) })),
+        sub: delta === null ? "" : `${delta <= 0 ? "↓" : "↑"} ${Math.abs(delta)}% ${t(`d.vs_${this._period}`)}`,
+      },
+      { label: t("d.kpi_avg_day"), value: tipped(eur(total / days), t("d.tip_avg_day", { total: eur(total), n: days })), sub: "" },
+      {
+        label: t("d.kpi_grid_price"),
+        value: tipped(gridPrice !== null ? eur(gridPrice, 3) : "—", t("d.tip_grid_price", { cost: eur(house?.net_cost ?? 0), kwh: num(gridKwh, 1) })),
+        sub: "",
+      },
     ];
 
-    const money = series.map((id) => ({ id, ...deviceInfo(this.ctx, id), v: d.totals[id]?.cost ?? 0 }));
+    const money = series.map((id) => ({ id, ...deviceInfo(this.ctx, id), v: d.totals[id]?.cost ?? 0, n: d.totals[id] }));
     const posTotal = money.reduce((a, m) => a + Math.max(m.v, 0), 0);
+    const moneyTip = (m: (typeof money)[number]) => {
+      const base = m.n ? t("d.tip_series", { kwh: num(m.n.kwh, 1), zon: num(m.n.zon, 1), net: eur(m.n.net_cost), zon_cost: eur(m.n.zon_cost) }) : "";
+      return m.id === "_rest" ? `${t("d.rest_note")}\n${base}` : base;
+    };
 
     if (kwh < 0.001) {
       return html`<div class="page">${head}${d.has_house ? nothing : html`<div class="alert info"><ha-icon icon="mdi:information"></ha-icon>${t("d.no_house")}</div>`}
@@ -180,30 +202,46 @@ export class EdDashboard extends LitElement {
     return html`<div class="page">
       ${head}
       ${d.has_house ? nothing : html`<div class="alert info"><ha-icon icon="mdi:information"></ha-icon>${t("d.no_house")}</div>`}
-      <div class="kpis">${kpis.map((k) => html`<div class="card kpi"><div class="label">${k.label}</div><div class="value">${k.value}</div><div class="sub">${k.sub}</div></div>`)}</div>
+      <div class="kpis">${kpis.map((k) => html`<div class="card kpi"><div class="label">${k.label}</div><div class="value">${k.value}</div>${k.sub ? html`<div class="sub">${k.sub}</div>` : nothing}</div>`)}</div>
       <div class="two">
         <div class="card">
           <h3>${t("d.money")}</h3>
           <div class="donut-row">
             <div class="donut" role="img" aria-label=${money.map((m) => `${m.name} ${eur(m.v)}`).join(", ")} style="background:${conic(money.map((m) => ({ v: m.v, color: m.color })))}"><div class="mid"><span>${eur(total, 0)}</span></div></div>
-            <div class="legend">${money.map((m) => html`<div class="row"><span class="swatch" style="background:${m.color}"></span><span>${m.name}</span><span class="v">${eur(m.v)}</span><span class="p">${pct(Math.max(m.v, 0), posTotal)}%</span></div>`)}</div>
+            <div class="legend">${money.map((m) => html`<div class="row"><span class="swatch" style="background:${m.color}"></span><span>${m.name}</span><span class="v">${tipped(eur(m.v), moneyTip(m))}</span><span class="p">${pct(Math.max(m.v, 0), posTotal)}%</span></div>`)}</div>
           </div>
-          ${d.has_house ? html`<p class="muted small" style="margin-top:12px">${t("d.rest_note")}</p>` : nothing}
         </div>
-        <div class="card">
-          <h3>${t("d.source")}</h3>
-          <div class="donut-row">
-            <div class="donut" role="img" aria-label="${t("d.own_solar")} ${pct(zonKwh, kwh)}%, ${t("d.grid")} ${100 - pct(zonKwh, kwh)}%" style="background:${conic([{ v: zonKwh, color: c.zon }, { v: kwh - zonKwh, color: c.net }])}"><div class="mid"><span>${pct(zonKwh, kwh)}%</span><span class="small muted">${t("s.solar").toLowerCase()}</span></div></div>
-            <div class="legend">
-              <div class="row"><span class="swatch" style="background:${c.zon}"></span><span>${t("d.own_solar")}</span><span class="v">${num(zonKwh, 0)} kWh</span><span class="p">${pct(zonKwh, kwh)}%</span></div>
-              <div class="row"><span class="swatch" style="background:${c.net}"></span><span>${t("d.grid")}</span><span class="v">${num(kwh - zonKwh, 0)} kWh</span><span class="p">${100 - pct(zonKwh, kwh)}%</span></div>
-            </div>
-          </div>
-          <p class="muted small" style="margin-top:12px">${t("d.measured", { kwh: num(kwh, 0) })} ${t(`d.mode.${mode}`)}</p>
-        </div>
+        ${hasSolar ? this._solar(d, zonKwh, kwh) : nothing}
       </div>
       ${this._perDay(d, series)}
       <div class="two">${this._perKwh(d, series)}${this._hours(d)}</div>
+    </div>`;
+  }
+
+  private _solar(d: Summary, zonKwh: number, kwh: number): TemplateResult {
+    const c = colors(this.ctx.dark);
+    const mode = this.ctx.config.settings.solar_mode;
+    const house = d.totals["_house"];
+    const exp = d.export;
+    const produced = exp.available ? zonKwh + exp.kwh : null;
+    const saved = house ? house.all_net - house.cost : 0;
+    const share = pct(zonKwh, kwh);
+    const rows: [string, TemplateResult][] = [];
+    if (produced !== null) rows.push([t("d.produced"), tipped(`${num(produced, 1)} kWh`, t("d.tip_produced", { zon: num(zonKwh, 1), exp: num(exp.kwh, 1) }))]);
+    rows.push([t("d.self_used"), tipped(`${num(zonKwh, 1)} kWh`, produced ? t("d.tip_self_used_p", { p: pct(zonKwh, produced) }) : t("d.tip_self_used"))]);
+    if (exp.available) {
+      rows.push([t("d.exported"), tipped(`${num(exp.kwh, 1)} kWh`, t("d.tip_exported"))]);
+      rows.push([t("d.export_value"), tipped(eur(exp.value), t("d.tip_export_value", { price: exp.kwh > 0.01 ? eur(exp.value / exp.kwh, 3) : "—" }))]);
+    }
+    if (mode !== "grid") rows.push([t("d.kpi_saved"), tipped(eur(saved), t("d.tip_saved", { all: eur(house?.all_net ?? 0), cost: eur(house?.cost ?? 0), mode: t(`d.mode.${mode}`) }))]);
+    return html`<div class="card">
+      <h3>${t("d.solar")}</h3>
+      <div class="donut-row">
+        <div class="donut" role="img" aria-label="${t("d.own_solar")} ${share}%, ${t("d.grid")} ${100 - share}%" style="background:${conic([{ v: zonKwh, color: c.zon }, { v: kwh - zonKwh, color: c.net }])}">
+          <div class="mid">${tipped(`${share}%`, t("d.tip_share", { zon: num(zonKwh, 1), kwh: num(kwh, 1), grid: num(kwh - zonKwh, 1) }))}<span class="small muted">${t("d.of_use")}</span></div>
+        </div>
+        <div class="solar">${rows.map(([k, v]) => html`<span>${k}</span><span>${v}</span>`)}</div>
+      </div>
     </div>`;
   }
 
@@ -230,11 +268,8 @@ export class EdDashboard extends LitElement {
           })}</div>`
         : nothing}
       <div class="labels">${d.days.map((x, i) => html`<span>${year ? day(x.date, { month: "short" }) : week ? day(x.date, { weekday: "short", day: "numeric" }) : (i === 0 || (i + 1) % 5 === 0 ? day(x.date, { day: "numeric" }) : "")}</span>`)}</div>
-      ${sel ? html`<div class="readout"><b>${label(sel.date)}: ${eur(dayTotal(hd))}</b>
-        <span class="muted"> · ${series.filter((id) => Math.abs(sel.series[id]?.cost ?? 0) > 0.0005).map((id) => `${deviceInfo(this.ctx, id).name} ${eur(sel.series[id]!.cost)}`).join(" · ")}</span></div>` : nothing}
-      <div class="legend" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-top:12px">
-        ${series.map((id) => { const i = deviceInfo(this.ctx, id); return html`<div class="row"><span class="swatch" style="background:${i.color}"></span><span class="small">${i.name}</span></div>`; })}
-      </div>
+      ${sel ? html`<div class="readout"><b style="margin-right:12px">${label(sel.date)}: ${eur(dayTotal(hd))}</b>
+        ${series.filter((id) => Math.abs(sel.series[id]?.cost ?? 0) > 0.0005).map((id) => { const i = deviceInfo(this.ctx, id); return html`<span class="it small"><span class="swatch" style="background:${i.color}"></span>${i.name} ${eur(sel.series[id]!.cost)}</span>`; })}</div>` : nothing}
     </div>`;
   }
 
@@ -243,7 +278,6 @@ export class EdDashboard extends LitElement {
     const max = Math.max(0.05, ...rows.map((r) => Math.max(r.n!.price_per_kwh ?? 0, r.n!.grid_price_per_kwh ?? 0))) * 1.1;
     return html`<div class="card">
       <h3>${t("d.per_kwh")}</h3>
-      <p class="muted small">${t("d.per_kwh_text")}</p>
       ${rows.map((r) => {
         const p = r.n!.price_per_kwh ?? 0;
         const g = r.n!.grid_price_per_kwh ?? 0;
@@ -251,7 +285,7 @@ export class EdDashboard extends LitElement {
         return html`<div class="prow">
           <span class="row" style="gap:8px"><span class="swatch" style="background:${r.color}"></span>${r.name}</span>
           <div class="hbar"><div style="width:${Math.max((p / max) * 100, 0).toFixed(1)}%;background:${r.color}"></div><span class="ref" style="left:${((g / max) * 100).toFixed(1)}%"></span></div>
-          <span><b>${eur(p, 3)}</b> <span class="small muted">${diff > 1 ? t("d.vs_grid_below", { p: diff }) : diff < -1 ? t("d.vs_grid_above", { p: -diff }) : t("d.vs_grid_same")}</span></span>
+          ${tipped(html`<b>${eur(p, 3)}</b>`, t("d.tip_per_kwh", { cost: eur(r.n!.cost), kwh: num(r.n!.kwh, 1), grid: eur(g, 3), diff: diff > 1 ? t("d.vs_grid_below", { p: diff }) : diff < -1 ? t("d.vs_grid_above", { p: -diff }) : t("d.vs_grid_same") }))}
         </div>`;
       })}
     </div>`;
@@ -270,7 +304,6 @@ export class EdDashboard extends LitElement {
     const pad = (n: number) => String(n).padStart(2, "0");
     return html`<div class="card">
       <h3>${t("d.when")}</h3>
-      <p class="muted small">${t("d.when_text")}</p>
       <div class="hours">
         ${d.hours.map((h) => html`<button class="h" style="opacity:${h.hour === hh ? 1 : 0.7}" aria-label="${pad(h.hour)}:00, ${num(h.kwh, 2)} kWh, ${eur(h.price)}" @mouseenter=${() => (this._hoverHour = h.hour)} @click=${() => (this._hoverHour = h.hour)}>
           <div class="k" style="height:${((h.kwh / maxK) * 100).toFixed(1)}%"></div>
@@ -317,7 +350,7 @@ export class EdSessions extends LitElement {
     const cost = sessionCost(f, this._mode);
     const zon = this._mode === "grid" ? 0 : pct(f[1], f[0]);
     return html`<button class="item" @click=${() => fire(this, "open-session", s)}>
-      <span class="icon-bubble" style="color:${info.color};background:color-mix(in srgb, ${info.color} 14%, transparent)"><ha-icon icon=${TYPE_ICON[info.type] ?? "mdi:flash"}></ha-icon></span>
+      <span class="icon-bubble" style="color:${info.color};background:color-mix(in srgb, ${info.color} 14%, transparent)"><ha-icon icon=${info.icon}></ha-icon></span>
       <div class="grow">
         <div>${info.name} ${s.running ? html`<span class="chip ok">${t("s.running")}</span>` : nothing}</div>
         <div class="muted small">${dateTime(s.start)}${s.end ? ` – ${time(s.end)}` : ""} · ${t("s.duration", { min: minutesBetween(s.start, s.end ?? new Date().toISOString()) })} · ${num(f[0], 2)} kWh${zon > 0 ? ` · ${zon}% ${t("s.solar").toLowerCase()}` : ""}</div>
@@ -406,6 +439,7 @@ export class EdBaseload extends LitElement {
 
   constructor() {
     super();
+    new TipController(this);
     this._data = null;
   }
 
@@ -431,11 +465,10 @@ export class EdBaseload extends LitElement {
     return html`<div class="page">
       <div class="card">
         <h2>${t("b.title")}</h2>
-        <p class="muted">${t("b.text")}</p>
         <div class="kpis" style="margin-top:12px">
-          <div class="kpi"><div class="value">${num(b.watt, 0)} W</div><div class="sub">${num(b.kwh_day, 2)} kWh ${t("b.per_day")}</div></div>
-          <div class="kpi"><div class="value">${eur(b.cost_month)}</div><div class="sub">${t("b.per_month")}</div></div>
-          <div class="kpi"><div class="value">${eur(b.cost_year, 0)}</div><div class="sub">${t("b.per_year")}</div></div>
+          <div class="kpi"><div class="value">${tipped(`${num(b.watt, 0)} W`, t("b.text"))}</div><div class="sub">${num(b.kwh_day, 2)} kWh ${t("b.per_day")}</div></div>
+          <div class="kpi"><div class="value">${tipped(eur(b.cost_month), t("b.tip_cost", { kwh: num(b.kwh_day, 2), days: "30,4", price: eur(b.price, 3) }))}</div><div class="sub">${t("b.per_month")}</div></div>
+          <div class="kpi"><div class="value">${tipped(eur(b.cost_year, 0), t("b.tip_cost", { kwh: num(b.kwh_day, 2), days: "365", price: eur(b.price, 3) }))}</div><div class="sub">${t("b.per_year")}</div></div>
         </div>
       </div>
       <div class="two">
@@ -447,9 +480,8 @@ export class EdBaseload extends LitElement {
           </div>
           <div class="legend">
             ${parts.map((p) => html`<div class="row"><span class="swatch" style="background:${p.color}"></span><span>${p.name}</span><span class="v">${num(p.watt, 0)} W</span></div>`)}
-            <div class="row"><span class="swatch" style="background:${c.rest}"></span><span>${t("b.unexplained")}</span><span class="v">${num(unexplained, 0)} W</span></div>
+            <div class="row"><span class="swatch" style="background:${c.rest}"></span><span>${t("b.unexplained")}</span><span class="v">${tipped(`${num(unexplained, 0)} W`, t("b.unexplained_text"))}</span></div>
           </div>
-          <p class="muted small" style="margin-top:12px">${t("b.unexplained_text")}</p>
         </div>
         <div class="card">
           <h3>${t("b.weeks")}</h3>
@@ -481,7 +513,7 @@ export class EdDevices extends LitElement {
           const n = cfg.numbers[d.id!];
           const running = cfg.open_sessions[d.id!]?.running;
           return html`<button class="item" @click=${() => fire(this, "open-device", d)}>
-            <span class="icon-bubble" style="color:${info.color};background:color-mix(in srgb, ${info.color} 14%, transparent)"><ha-icon icon=${TYPE_ICON[d.type]}></ha-icon></span>
+            <span class="icon-bubble" style="color:${info.color};background:color-mix(in srgb, ${info.color} 14%, transparent)"><ha-icon icon=${info.icon}></ha-icon></span>
             <div class="grow">
               <div>${d.name} ${running ? html`<span class="chip ok">${t("s.running")}</span>` : nothing} ${d.energy_is_power ? html`<span class="chip warn">${t("chip.power")}</span>` : nothing}</div>
               <div class="muted small">${t(`type.${d.type}`)} · ${ruleText(this.ctx, d)}</div>

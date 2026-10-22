@@ -68,9 +68,13 @@ def backfill_house(
     prices: Prices,
     tz: tzinfo,
     before: datetime,
+    export: Hourly | None = None,
 ) -> int:
-    """Whole house per hour: import plus solar used in the house (as HouseTracker)."""
+    """Whole house per hour: import plus solar used in the house (as HouseTracker), and the export."""
     added = 0
+    for hour, kwh in (export or {}).items():
+        if hour + HOUR <= before:
+            agg.add_export(hour, hour + HOUR, kwh, prices, tz)
     for hour in sorted(imp):
         if hour + HOUR > before:
             continue

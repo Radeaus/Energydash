@@ -99,5 +99,7 @@ export const shared = css`
   .kv > :nth-child(even) { word-break: break-word; }
   .mono { font-family: var(--code-font-family, ui-monospace, monospace); font-size: 12px; }
   details summary { cursor: pointer; font-weight: 500; padding: 8px 0; }
+  [data-tip] { cursor: help; }
+  [data-tip]:hover, [data-tip]:focus-visible { text-decoration: underline dotted; text-underline-offset: 4px; outline: none; }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 `;

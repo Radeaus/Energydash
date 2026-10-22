@@ -62,14 +62,14 @@ Het paneel krijgt `hass`, `narrow`, `route` en `panel`. Het moet zelf een kopbal
 | `energydash/quality` | Gegevenscheck voor een gekozen bron |
 | `energydash/preview_sessions` | Historie van een bron + gedetecteerde sessies bij gegeven drempels (voor "voorbeeld aanwijzen") |
 | `energydash/sessions` | Sessies met opbouw per kwartier |
-| `energydash/summary` | Dashboarddata per periode (per apparaat, rest, zon/net, per uur) |
+| `energydash/summary` | Dashboarddata per periode: kalenderweek (tot en met vandaag), maand of jaar; per apparaat, rest, zon/net, teruglevering, per uur |
 | `energydash/baseload` | Sluipverbruik en uitsplitsing |
 | `energydash/subscribe` | Live updates naar het paneel |
 | `energydash/settings/save` | Prijzen en zon opslaan (beheerder) |
 | `energydash/analyze` | Gegevenscheck + voorgestelde soort, drempels en sessiestatussen |
 | `energydash/recalculate` | Eén apparaat of alles opnieuw berekenen (beheerder) |
 | `energydash/steps` | Laatste meetstappen van een apparaat (controle) |
-| `energydash/reset` | `data` (cijfers wissen) of `all` (apparaten en cijfers) (beheerder) |
+| `energydash/reset` | `data` (cijfers wissen en alles direct opnieuw berekenen) of `all` (apparaten en cijfers; het huis wordt direct opnieuw berekend) (beheerder) |
 | `energydash/export` / `import` | Apparaten en instellingen als JSON (beheerder) |
 
 In 1.0 heet `energydash/quality` `energydash/analyze`, en `sessions/list`/`get` is één commando `energydash/sessions`.
@@ -78,7 +78,7 @@ In 1.0 heet `energydash/quality` `energydash/analyze`, en `sessions/list`/`get` 
 - **Live**: state-change listeners op gekozen tellers, P1-import en sessie-entiteiten. Elke tellerstap → engine → opslag.
 - **Terugrekenen**: bij toevoegen van een apparaat de recorder-historie (standaard ~10 dagen) van teller, P1 en prijs ophalen en dezelfde engine draaien. Daarvoor, tot een jaar terug, de langetermijnstatistieken per uur (`backfill.py`, zie docs/02 §7): kosten per uur, geen sessies.
 - **Opslag**: `Store` met versie en migraties, in drie bestanden: `energydash.config` (apparaten), `energydash.data` (laatste 35 dagen, trackerstatus, open sessies; hooguit elke 5 minuten geschreven en altijd bij afsluiten) en `energydash.archive` (ouder, ongeveer dagelijks). Zo blijft de schrijfbelasting laag op een SD-kaart.
-- **Resultaten** worden per reeks (apparaat, `_house`) in lokale uurbuckets bewaard met vijf velden: kWh, zon-kWh, netkosten, kosten-alles-net en zon-terugleverwaarde. De zonkeuze wordt pas bij het opvragen toegepast, dus wisselen werkt ook voor het verleden.
+- **Resultaten** worden per reeks (apparaat, `_house`) in lokale uurbuckets bewaard met vijf velden: kWh, zon-kWh, netkosten, kosten-alles-net en zon-terugleverwaarde. De zonkeuze wordt pas bij het opvragen toegepast, dus wisselen werkt ook voor het verleden. De reeks `_export` bewaart per uur de teruglevering: kWh in het eerste veld, de opbrengst tegen de terugleverprijs in het laatste; opgewekt = zelf gebruikt (zon-kWh van `_house`) + teruglevering.
 - **Sensoren** met `state_class`/`device_class: monetary` zodat HA zelf langetermijnstatistieken bijhoudt.
 
 ## Kwaliteit

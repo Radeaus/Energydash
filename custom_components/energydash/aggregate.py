@@ -13,10 +13,12 @@ from statistics import median
 from typing import Any, Iterable
 
 from .const import (
+    EXPORT_KEY,
     F_ALL_NET,
     F_KWH,
     F_NET_COST,
     F_ZON,
+    F_ZON_EXPORT,
     HOURLY_RETENTION_DAYS,
     HOUSE_KEY,
     MAX_SESSIONS,
@@ -76,6 +78,7 @@ class Aggregator:
         recent: dict[str, dict[str, list[float]]] = {}
         archive: dict[str, dict[str, list[float]]] = {}
         for series, buckets in self.hours.items():
+            recent.setdefault(series, {})  # an empty series still says "calculated"
             for key, vals in buckets.items():
                 target = recent if key >= cutoff_key else archive
                 target.setdefault(series, {})[key] = [round(v, 6) for v in vals]
@@ -108,6 +111,15 @@ class Aggregator:
             entries.append(step.as_log())
             if len(entries) > STEP_LOG_SIZE:
                 del entries[: len(entries) - STEP_LOG_SIZE]
+
+    def add_export(self, t0: datetime, t1: datetime, kwh: float, prices: Any, tz: tzinfo) -> None:
+        """Solar export of the house, with what it earned at the export price over [t0, t1]."""
+        if kwh <= 0:
+            return
+        vals = _zero()
+        vals[F_KWH] = kwh
+        vals[F_ZON_EXPORT] = kwh * prices.export_price(t0, t1)
+        add_fields(self.hours.setdefault(EXPORT_KEY, {}).setdefault(hour_key(t0, tz), _zero()), vals)
 
     def add_session(self, session: dict[str, Any]) -> None:
         self.sessions = [s for s in self.sessions if s["id"] != session["id"]]
@@ -182,8 +194,9 @@ class Aggregator:
                 rest = rest_fields(house, dev_sum)
                 add_fields(day_rows[day][REST_KEY], rest)
                 add_fields(totals[REST_KEY], rest)
-                add_fields(totals[HOUSE_KEY], house)
+                # Hours without a house step (P1 not calculated yet) still count the devices.
                 whole = house if house[F_KWH] >= dev_sum[F_KWH] else dev_sum
+                add_fields(totals[HOUSE_KEY], whole)
             else:
                 whole = dev_sum
             profile[hour][0] += whole[F_KWH]
@@ -191,6 +204,7 @@ class Aggregator:
         if not has_house:
             totals[HOUSE_KEY] = add_fields(_zero(), [sum(totals[i][f] for i in ids) for f in range(N_FIELDS)])
 
+        exported = self.sum_range(EXPORT_KEY, start_key, end_key)
         n_days = max(days, 1)
         return {
             "first_day": day_keys[0].isoformat(),
@@ -200,6 +214,11 @@ class Aggregator:
             ],
             "totals": {sid: describe(v, solar_mode) for sid, v in totals.items()},
             "has_house": has_house,
+            "export": {
+                "available": EXPORT_KEY in self.hours,
+                "kwh": round(exported[F_KWH], 4),
+                "value": round(exported[F_ZON_EXPORT], 4),
+            },
             "hours": [
                 {
                     "hour": h,

@@ -41,10 +41,11 @@ export function minutesBetween(a: string, b: string | null): number {
   return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000);
 }
 
-const DEVICE_LIGHT = ["#6250d6", "#e87ba4", "#008300", "#eda100", "#1baf7a", "#e34948", "#2f7fd8", "#a35a00"];
+export const DEVICE_LIGHT = ["#6250d6", "#e87ba4", "#008300", "#eda100", "#1baf7a", "#e34948", "#2f7fd8", "#a35a00"];
 const DEVICE_DARK = ["#9085e9", "#d55181", "#008300", "#c98500", "#199e70", "#e66767", "#5ba3f0", "#c98a3c"];
 
-export function deviceColor(index: number | undefined, dark: boolean): string {
+export function deviceColor(index: number | string | null | undefined, dark: boolean): string {
+  if (typeof index === "string") return index;
   const list = dark ? DEVICE_DARK : DEVICE_LIGHT;
   return list[(index ?? 0) % list.length];
 }

@@ -13,7 +13,7 @@ from edcore.backfill import (
     prices_from_cost,
     self_use_hourly,
 )
-from edcore.const import HOUSE_KEY, SOLAR_MODE_FREE
+from edcore.const import EXPORT_KEY, HOUSE_KEY, SOLAR_MODE_FREE
 from edcore.price import PriceProvider, PriceSeries
 
 UTC = timezone.utc
@@ -91,3 +91,33 @@ def test_year_summary_by_month():
     assert list(rows) == ["2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01"]
     assert rows["2026-01-01"] == pytest.approx(2.0)
     assert rows["2026-03-01"] == pytest.approx(1.0)
+
+
+def test_backfill_house_export():
+    before = datetime(2026, 10, 12, 0, tzinfo=UTC)
+    h1 = datetime(2026, 9, 1, 10, tzinfo=UTC)
+    late = datetime(2026, 10, 12, 0, tzinfo=UTC)
+    agg = Aggregator()
+    prices = PriceProvider(observed=flat_prices().observed, export_fallback=0.08)
+    backfill_house(agg, {h1: 0.5}, {h1: 1.8}, prices, AMS, before, {h1: 1.2, late: 3.0})
+    assert list(agg.hours[EXPORT_KEY].values()) == [pytest.approx([1.2, 0.0, 0.0, 0.0, 1.2 * 0.08])]
+
+
+def test_summary_house_falls_back_to_devices():
+    """Hours where the house was not calculated still count the devices (week not empty)."""
+    agg = Aggregator()
+    agg.hours[HOUSE_KEY] = {"2026-10-19T10": [2.0, 0.0, 0.5, 0.5, 0.0]}
+    agg.hours["dev"] = {"2026-10-19T10": [1.0, 0.0, 0.25, 0.25, 0.0], "2026-10-21T10": [3.0, 0.0, 0.75, 0.75, 0.0]}
+    s = agg.summary([{"id": "dev", "name": "Dev"}], date(2026, 10, 19), 3, SOLAR_MODE_FREE)
+    assert s["totals"][HOUSE_KEY]["kwh"] == pytest.approx(5.0)
+    assert s["totals"]["_rest"]["kwh"] == pytest.approx(1.0)
+    assert s["export"] == {"available": False, "kwh": 0.0, "value": 0.0}
+
+
+def test_empty_export_series_survives_storage():
+    agg = Aggregator()
+    agg.hours[EXPORT_KEY] = {}
+    recent, archive = agg.split("2026-10-01")
+    loaded = Aggregator(recent)
+    loaded.merge(archive)
+    assert EXPORT_KEY in loaded.hours

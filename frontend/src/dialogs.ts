@@ -3,10 +3,10 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { api, type Analysis, type Candidate, type Check, type Device, type DeviceType, type Preview, type Settings, type StepLog } from "./api";
 import { anySensorFilter, define, energyFilter, energyOnlyFilter, fire, powerFilter, sessionFilter, type EntityOption } from "./components";
-import { dateTime, eur, num, time } from "./format";
+import { DEVICE_LIGHT, dateTime, deviceColor, eur, num, time } from "./format";
 import { t } from "./i18n";
 import { shared } from "./styles";
-import { deviceInfo, ruleText, type Ctx } from "./views";
+import { TYPE_ICON, deviceInfo, ruleText, type Ctx } from "./views";
 
 type Step = "pick" | "type" | "sources" | "tune";
 const CHARGER_OFF_DELAY_MIN = 60;
@@ -29,6 +29,51 @@ export function checkRow(c: Check): TemplateResult {
 }
 
 const SOLAR_CHECK: Check = { level: "ok", code: "solar", value: null };
+
+const ICONS = [
+  "mdi:washing-machine", "mdi:tumble-dryer", "mdi:dishwasher", "mdi:ev-station", "mdi:car-electric", "mdi:server",
+  "mdi:fridge", "mdi:heat-pump", "mdi:air-conditioner", "mdi:water-boiler", "mdi:stove", "mdi:microwave",
+  "mdi:television", "mdi:desktop-tower", "mdi:lightbulb", "mdi:power-plug",
+];
+
+const lookCss = css`
+  .look { display: grid; gap: 12px; }
+  .swatches, .icons { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .sw { width: 32px; height: 32px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; outline-offset: 2px; }
+  .sw[aria-checked="true"] { outline: 2px solid var(--ed-text); }
+  .custom { width: 36px; height: 36px; padding: 0; border: 1px solid var(--ed-line); border-radius: 50%; background: none; cursor: pointer; }
+  .ic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--ed-line); background: none; cursor: pointer; color: var(--ed-text2); --mdc-icon-size: 22px; }
+  .ic[aria-checked="true"] { border: 2px solid currentColor; }
+`;
+
+/** Colour and icon of a device: palette swatches plus any colour, a set of icons plus any mdi icon. */
+function renderLook(dev: Device, fallbackIdx: number, dark: boolean, onChange: (patch: Partial<Device>) => void): TemplateResult {
+  const color = deviceColor(dev.color ?? fallbackIdx, dark);
+  const icon = dev.icon || TYPE_ICON[dev.type];
+  const hex = typeof dev.color === "string" ? dev.color : DEVICE_LIGHT[(dev.color ?? fallbackIdx) % DEVICE_LIGHT.length];
+  return html`<div class="look">
+    <div>
+      <div style="font-weight:500;font-size:14px;margin-bottom:6px">${t("w.color")}</div>
+      <div class="swatches" role="radiogroup" aria-label=${t("w.color")}>
+        ${DEVICE_LIGHT.map((_, i) => html`<button class="sw" role="radio" aria-checked=${(dev.color ?? fallbackIdx) === i} aria-label=${t("w.color_n", { n: i + 1 })}
+          style="background:${deviceColor(i, dark)}" @click=${() => onChange({ color: i })}></button>`)}
+        <label class="row" style="gap:6px"><input class="custom" type="color" aria-label=${t("w.color_custom")} .value=${hex}
+          @input=${(e: Event) => onChange({ color: (e.target as HTMLInputElement).value })} /><span class="help">${t("w.color_custom")}</span></label>
+      </div>
+    </div>
+    <div>
+      <div style="font-weight:500;font-size:14px;margin-bottom:6px">${t("w.icon")}</div>
+      <div class="icons" role="radiogroup" aria-label=${t("w.icon")}>
+        ${ICONS.map((i) => html`<button class="ic" role="radio" aria-checked=${icon === i} aria-label=${i} title=${i}
+          style=${icon === i ? `color:${color}` : ""} @click=${() => onChange({ icon: i })}><ha-icon icon=${i}></ha-icon></button>`)}
+      </div>
+    </div>
+    <label class="field"><span class="lbl">${t("w.icon_other")}</span>
+      <div class="row" style="gap:8px"><ha-icon icon=${icon} style="color:${color};--mdc-icon-size:28px;flex:none"></ha-icon>
+        <input class="input" placeholder="mdi:…" .value=${dev.icon ?? ""} @change=${(e: Event) => onChange({ icon: (e.target as HTMLInputElement).value.trim() || null })} /></div>
+      <span class="help">${t("w.icon_help")}</span></label>
+  </div>`;
+}
 
 // ---------------------------------------------------------------- add / edit
 export class EdAddDevice extends LitElement {
@@ -64,6 +109,7 @@ export class EdAddDevice extends LitElement {
 
   static styles = [
     shared,
+    lookCss,
     css`
       .radios { display: grid; gap: 8px; }
       .states { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -292,7 +338,20 @@ export class EdAddDevice extends LitElement {
       <div class="radios" role="radiogroup" aria-label=${t("w.type")}>
         ${types.map((ty) => radio(d.type === ty, t(`type.${ty}`), t(`type.${ty}.text`), () => this._set({ type: ty, session_source: ty === "charger" ? "entity" : d.session_entity && d.session_source === "entity" ? "entity" : "power" }, ty === "charger" && !d.session_entity)))}
       </div>
-      ${reason ? html`<div class="help">${reason}</div>` : nothing}`;
+      ${reason ? html`<div class="help">${reason}</div>` : nothing}
+      <details ?open=${this._isEdit}>
+        <summary>${t("w.look")}</summary>
+        ${renderLook(d, this._defaultColor, this.ctx.dark, (patch) => this._set(patch))}
+      </details>`;
+  }
+
+  private get _defaultColor(): number {
+    const idx = this.ctx.config.devices.findIndex((x) => x.id === this._dev.id);
+    if (idx >= 0) return idx;
+    const used = new Set(this.ctx.config.devices.map((x) => x.color));
+    let i = 0;
+    while (used.has(i)) i += 1;
+    return i;
   }
 
   private _renderSources() {
@@ -420,14 +479,24 @@ export class EdDeviceDialog extends LitElement {
   declare device: Device;
   declare _analysis: Analysis | null;
   declare _steps: StepLog[] | null;
+  declare _look: Partial<Device>;
 
-  static properties = { ctx: { attribute: false }, device: { attribute: false }, _analysis: { state: true }, _steps: { state: true } };
-  static styles = [shared, css`table { width: 100%; border-collapse: collapse; } td, th { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--ed-line); white-space: nowrap; } td:first-child, th:first-child, td:nth-child(2), th:nth-child(2) { text-align: left; } .scroll { overflow: auto; max-height: 260px; }`];
+  static properties = { ctx: { attribute: false }, device: { attribute: false }, _analysis: { state: true }, _steps: { state: true }, _look: { state: true } };
+  static styles = [shared, lookCss, css`table { width: 100%; border-collapse: collapse; } td, th { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--ed-line); white-space: nowrap; } td:first-child, th:first-child, td:nth-child(2), th:nth-child(2) { text-align: left; } .scroll { overflow: auto; max-height: 260px; }`];
 
   constructor() {
     super();
     this._analysis = null;
     this._steps = null;
+    this._look = {};
+  }
+
+  private _saveTimer?: number;
+  private _setLook(patch: Partial<Device>) {
+    this._look = { ...this._look, ...patch };
+    // The colour picker fires while dragging: save once it settles. No recalculation needed.
+    window.clearTimeout(this._saveTimer);
+    this._saveTimer = window.setTimeout(() => api.saveDevice(this.ctx.hass, { ...this.device, ...this._look }, false).catch(() => undefined), 400);
   }
 
   connectedCallback() {
@@ -439,10 +508,11 @@ export class EdDeviceDialog extends LitElement {
   }
 
   render() {
-    const d = this.device;
+    const d = { ...this.device, ...this._look };
     const n = this.ctx.config.numbers[d.id!];
     const admin = this.ctx.config.is_admin;
-    const info = deviceInfo(this.ctx, d.id!);
+    const idx = this.ctx.config.devices.findIndex((x) => x.id === d.id);
+    const info = { ...deviceInfo(this.ctx, d.id!), color: deviceColor(d.color ?? Math.max(idx, 0), this.ctx.dark) };
     const a = this._analysis;
     const checks = a ? [...a.checks, ...(d.session_source === "entity" && a.session_check && d.type !== "continuous" ? [a.session_check] : []), SOLAR_CHECK] : [];
     const cols = t("v.steps_cols").split("|");
@@ -456,6 +526,7 @@ export class EdDeviceDialog extends LitElement {
         <span>${t("c.this_month")}</span><span>${eur(n?.month.cost)} · ${num(n?.month.kwh, 2)} kWh · ${n && n.month.kwh > 0 ? Math.round((n.month.zon / n.month.kwh) * 100) : 0}% ${t("s.solar").toLowerCase()}</span>
       </div>
       <div><h3>${t("v.check")}</h3>${a ? checks.map(checkRow) : html`<p class="muted">${t("w.checking")}</p>`}</div>
+      ${admin ? html`<details><summary>${t("w.look")}</summary>${renderLook(d, Math.max(idx, 0), this.ctx.dark, (patch) => this._setLook(patch))}</details>` : nothing}
       <details @toggle=${(e: Event) => { if ((e.target as HTMLDetailsElement).open && !this._steps) api.steps(this.ctx.hass, d.id!).then((r) => (this._steps = r.steps)); }}>
         <summary>${t("v.steps")}</summary>
         ${this._steps === null ? html`<p class="muted">${t("c.loading")}</p>` : this._steps.length === 0 ? html`<p class="muted">${t("v.steps_none")}</p>` : html`<div class="scroll"><table class="mono">

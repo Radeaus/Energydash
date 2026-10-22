@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "energydash"
-VERSION = "1.2.2"
+VERSION = "1.2.3"
 
 PANEL_URL_PATH = "energydash"
 PANEL_COMPONENT = "energydash-panel"
@@ -67,6 +67,7 @@ MAX_SESSIONS = 2000
 
 HOUSE_KEY = "_house"
 REST_KEY = "_rest"
+EXPORT_KEY = "_export"  # solar export per hour: [kWh, 0, 0, 0, export value]
 
 # Bucket fields: [kwh, zon_kwh, net_cost, all_net_cost, zon_export_value]
 F_KWH, F_ZON, F_NET_COST, F_ALL_NET, F_ZON_EXPORT = range(5)

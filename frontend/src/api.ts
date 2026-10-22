@@ -35,7 +35,8 @@ export interface Device {
   threshold_w: number;
   off_delay_min: number;
   min_duration_min: number;
-  color?: number;
+  color?: number | string | null; // palette index or "#rrggbb"
+  icon?: string | null;
   added?: string;
 }
 
@@ -156,6 +157,7 @@ export interface Summary {
   days: { date: string; series: Record<string, Numbers> }[];
   totals: Record<string, Numbers>;
   has_house: boolean;
+  export: { available: boolean; kwh: number; value: number };
   hours: { hour: number; kwh: number; price: number | null }[];
   previous_total: number | null;
 }

@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from edcore.const import HOUSE_KEY, SOLAR_MODE_EXPORT
+from edcore.const import EXPORT_KEY, HOUSE_KEY, SOLAR_MODE_EXPORT
 from edcore.engine import cost_of
 from edcore.price import PriceProvider, PriceSeries
 from edcore.replay import numeric_series, replay_device, replay_house
@@ -179,3 +179,16 @@ def test_charger_price_pauses_stay_one_session():
     _, agg = replay_device(dev, {"c": counter}, numeric_series(p1, "energy", "kWh"), prices(), START, at(8 * 60), AMS, "kWh", None)
     assert len(agg.sessions) == 1
     assert agg.sessions[0]["fields"][0] == pytest.approx(11 / 60 * len(on), abs=0.01)
+
+
+def test_house_replay_export():
+    """Solar export is kept per hour with what it earned (0.05/kWh), production is not double counted."""
+    imp = [S("1000.0", at(0)), S("1000.0", at(60))]
+    sol = [S(f"{50 + i * 0.05:.3f}", at(i)) for i in range(0, 61)]  # 3 kWh produced
+    exp = [S(f"{20 + i * 0.03:.3f}", at(i)) for i in range(0, 61)]  # 1.8 kWh exported
+    series = [numeric_series(imp, "energy", "kWh"), numeric_series(exp, "energy", "kWh"), numeric_series(sol, "energy", "kWh")]
+    _, agg = replay_house(series, prices(), START, at(60), AMS)
+    exported = agg.hours[EXPORT_KEY]
+    assert sum(v[0] for v in exported.values()) == pytest.approx(1.8, abs=0.05)
+    assert sum(v[4] for v in exported.values()) == pytest.approx(1.8 * 0.05, abs=0.003)
+    assert sum(v[1] for v in agg.hours[HOUSE_KEY].values()) == pytest.approx(1.2, abs=0.05)  # self-use

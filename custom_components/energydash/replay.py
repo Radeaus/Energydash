@@ -136,4 +136,5 @@ def replay_house(series, prices, start, end, tz):
         step = house.tick(t, vals[0], vals[1], vals[2], prices)
         if step is not None:
             agg.add_step(HOUSE_KEY, step, tz, log=False)
+            agg.add_export(step.t0, step.t1, house.exported, prices, tz)
     return house, agg

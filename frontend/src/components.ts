@@ -1,6 +1,6 @@
 // Small building blocks: dialog (bottom sheet on narrow screens), entity picker, confirm dialog.
 
-import { LitElement, css, html, nothing } from "lit";
+import { LitElement, css, html, nothing, type ReactiveController, type ReactiveControllerHost } from "lit";
 import type { Hass, HassState } from "./api";
 import { shared } from "./styles";
 import { t } from "./i18n";
@@ -8,6 +8,80 @@ import { t } from "./i18n";
 export function fire(el: HTMLElement, type: string, detail?: unknown) {
   // Not composed: events stay inside the panel and never reach Home Assistant's own listeners.
   el.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: false }));
+}
+
+/**
+ * Tooltips for numbers: any element with `data-tip` (and tabindex="0") explains on hover or focus
+ * how its value is calculated, so the cards themselves can stay short.
+ */
+export class TipController implements ReactiveController {
+  private pop?: HTMLDivElement;
+  private current: Element | null = null;
+
+  constructor(private host: ReactiveControllerHost & LitElement) {
+    host.addController(this);
+  }
+
+  hostConnected() {
+    const root = this.host.renderRoot;
+    root.addEventListener("pointerover", this.over);
+    root.addEventListener("pointerout", this.out);
+    root.addEventListener("focusin", this.over);
+    root.addEventListener("focusout", this.out);
+    window.addEventListener("scroll", this.hide, true);
+  }
+
+  hostDisconnected() {
+    const root = this.host.renderRoot;
+    root.removeEventListener("pointerover", this.over);
+    root.removeEventListener("pointerout", this.out);
+    root.removeEventListener("focusin", this.over);
+    root.removeEventListener("focusout", this.out);
+    window.removeEventListener("scroll", this.hide, true);
+    this.hide();
+  }
+
+  private over = (e: Event) => {
+    const el = (e.target as Element | null)?.closest?.("[data-tip]") ?? null;
+    if (el && el !== this.current) this.show(el);
+  };
+
+  private out = (e: Event) => {
+    const to = (e as FocusEvent).relatedTarget as Node | null;
+    if (this.current && to && this.current.contains(to)) return;
+    this.hide();
+  };
+
+  private hide = () => {
+    this.current = null;
+    if (this.pop) this.pop.style.display = "none";
+  };
+
+  private show(el: Element) {
+    this.current = el;
+    if (!this.pop) {
+      const pop = document.createElement("div");
+      pop.setAttribute("role", "tooltip");
+      Object.assign(pop.style, {
+        position: "fixed", zIndex: "30", maxWidth: "280px", padding: "8px 10px", borderRadius: "8px", pointerEvents: "none",
+        background: "var(--ed-text)", color: "var(--ed-card)", fontSize: "12px", lineHeight: "1.45", whiteSpace: "pre-line",
+        boxShadow: "0 4px 12px rgba(0,0,0,.25)", fontWeight: "400", textAlign: "left",
+      });
+      this.host.renderRoot.appendChild(pop);
+      this.pop = pop;
+    }
+    const pop = this.pop;
+    pop.textContent = el.getAttribute("data-tip") ?? "";
+    pop.style.display = "block";
+    const r = el.getBoundingClientRect();
+    const w = pop.offsetWidth;
+    const h = pop.offsetHeight;
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+    pop.style.top = `${top}px`;
+    pop.style.left = `${Math.max(8, left)}px`;
+  }
 }
 
 export class EdDialog extends LitElement {

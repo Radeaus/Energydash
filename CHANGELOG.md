@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.2.3 – 22 oktober 2026
+
+### Dashboard
+- **Week** is nu de kalenderweek (maandag tot en met zondag). De huidige week toont de tussenstand tot en met vandaag, vergeleken met dezelfde dagen vorige week.
+- Opgelost: als het huis voor recente dagen nog niet was berekend, stond de week op nul. Uren zonder huisberekening tellen nu je apparaten mee.
+- Nieuwe kaart **Zon**: aandeel eigen zon in je verbruik, opgewekt, zelf gebruikt, teruggeleverd, opbrengst teruglevering en bespaard door zon. Opgewekt en teruglevering verschijnen als je een terugleverteller hebt ingesteld.
+- Rustiger: uitleg staat niet meer als tekst onder de kaarten, maar in een tooltip op het getal. Ga met de muis op een bedrag of aantal staan (of tik erop) en je ziet hoe het berekend is. Ook op de pagina Sluipverbruik.
+- Kosten per dag: de losse legenda is weg; bij het aanwijzen van een dag zie je de bedragen met hun kleur.
+
+### Apparaten
+- Kleur en icoon per apparaat instellen: kies uit de vaste kleuren of een eigen kleur, en uit een reeks iconen of elk `mdi:`-icoon. Onder Apparaten → apparaat → **Kleur en icoon** (wordt direct opgeslagen) of in de wizard.
+
+### Beheer
+- **Energydash terugzetten** en **Berekende gegevens wissen** rekenen daarna vanzelf opnieuw: het hele huis direct, en bij wissen ook al je apparaten. Een losse herberekening is niet meer nodig. Lopende herberekeningen worden eerst gestopt.
+
+**Na bijwerken:** de eerste start vult de teruglevering eenmalig aan (het huis wordt opnieuw berekend). Dat gebeurt vanzelf.
+
 ## 1.2.2 – 22 oktober 2026
 
 ### Snelle start

@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 import logging
+import re
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -35,6 +36,7 @@ from .const import (
     DEFAULT_THRESHOLD_W,
     DEVICE_TYPES,
     DOMAIN,
+    EXPORT_KEY,
     HOUSE_KEY,
     HOUSE_TICK_S,
     RECENT_DAYS,
@@ -62,8 +64,9 @@ BACKFILL_DAYS = 366  # older than the recorder window: hourly long-term statisti
 
 DEVICE_FIELDS = (
     "id", "name", "type", "energy_entity", "energy_is_power", "power_entity", "session_source",
-    "session_entity", "session_states", "threshold_w", "off_delay_min", "min_duration_min", "color", "added",
+    "session_entity", "session_states", "threshold_w", "off_delay_min", "min_duration_min", "color", "icon", "added",
 )
+HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def _float(value: Any) -> float | None:
@@ -163,6 +166,9 @@ class EnergydashCoordinator:
             await self.storage.async_save_config(self.config)
             self.start_task(self.async_recalculate(None, include_house=True), "pending")
         elif not self.agg.hours.get(HOUSE_KEY) and self.house.last_time is None:
+            self.start_task(self.async_recalculate_house(), "house")
+        elif self.settings.get(CONF_EXPORT_ENTITY) and EXPORT_KEY not in self.agg.hours:
+            # Results from before the solar figures existed: fill the export once.
             self.start_task(self.async_recalculate_house(), "house")
         _LOGGER.debug("Energydash %s started with %d devices", VERSION, len(self.devices))
 
@@ -384,6 +390,7 @@ class EnergydashCoordinator:
             step = self.house.tick(now, imp, self._state_kwh(s.get(CONF_EXPORT_ENTITY)), self._state_kwh(s.get(CONF_SOLAR_ENTITY)), prices)
             if step is not None:
                 self.agg.add_step(HOUSE_KEY, step, self.tz)
+                self.agg.add_export(step.t0, step.t1, self.house.exported, prices, self.tz)
                 self._save()
                 self.notify()
         today = dt_util.now().date()
@@ -462,6 +469,11 @@ class EnergydashCoordinator:
         dev["min_duration_min"] = float(dev.get("min_duration_min") or DEFAULT_MIN_DURATION_MIN)
         if dev["energy_is_power"]:
             dev["power_entity"] = dev["energy_entity"]
+        color = dev.get("color")
+        if not (isinstance(color, int) and not isinstance(color, bool) and color >= 0) and not (isinstance(color, str) and HEX_COLOR.match(color)):
+            dev["color"] = None
+        icon = dev.get("icon")
+        dev["icon"] = icon.strip() if isinstance(icon, str) and ":" in icon else None
         return dev
 
     async def async_save_device(self, raw: dict[str, Any], recalculate: bool) -> dict[str, Any]:
@@ -475,13 +487,15 @@ class EnergydashCoordinator:
                 new_id, n = f"{base}_{n}", n + 1
             dev["id"] = new_id
             dev["added"] = dt_util.utcnow().isoformat()
-            used_colors = {d.get("color") for d in self.devices}
-            dev["color"] = next(i for i in range(len(self.devices) + 1) if i not in used_colors)
+            if dev["color"] is None:
+                used_colors = {d.get("color") for d in self.devices}
+                dev["color"] = next(i for i in range(len(self.devices) + 1) if i not in used_colors)
             self.devices.append(dev)
             old_state = None
         else:
             dev["added"] = existing.get("added")
-            dev["color"] = existing.get("color")
+            if dev["color"] is None:
+                dev["color"] = existing.get("color")
             self.devices[self.devices.index(existing)] = dev
             old_state = self.trackers[dev["id"]].to_dict() if dev["id"] in self.trackers else None
         tracker = DeviceTracker(dev)
@@ -601,9 +615,10 @@ class EnergydashCoordinator:
             self.notify()
             try:
                 await self.hass.async_add_executor_job(
-                    backfill_house, house_agg, older["imp"], older["solar"], older["prices"], self.tz, start
+                    backfill_house, house_agg, older["imp"], older["solar"], older["prices"], self.tz, start, older.get("exp")
                 )
-                self.agg.hours.setdefault(HOUSE_KEY, {}).update(house_agg.hours.get(HOUSE_KEY, {}))
+                for key in (HOUSE_KEY, EXPORT_KEY):
+                    self.agg.hours.setdefault(key, {}).update(house_agg.hours.get(key, {}))
             finally:
                 self.busy.pop(HOUSE_KEY, None)
         self._save(archive=True)
@@ -617,6 +632,7 @@ class EnergydashCoordinator:
         try:
             change = await async_get_hourly(self.hass, [imp_id, exp_id, sol_id], start, before, "change")
             imp = change.get(imp_id, {})
+            exported = change.get(exp_id) if exp_id else None
             solar = None
             if sol_id and change.get(sol_id):
                 solar = self_use_hourly(change[sol_id], change.get(exp_id, {}) if exp_id else None)
@@ -625,7 +641,7 @@ class EnergydashCoordinator:
             _LOGGER.exception("Reading long-term statistics failed; only the recorder window is used")
             return None
         _LOGGER.debug("Long-term statistics: %d hours of P1 import before %s", len(imp), before)
-        return {"imp": imp, "solar": solar, "prices": prices}
+        return {"imp": imp, "solar": solar, "exp": exported, "prices": prices}
 
     async def _backfill_prices(
         self, start: datetime, before: datetime, imp: dict[datetime, float], window_prices: PriceProvider
@@ -714,9 +730,10 @@ class EnergydashCoordinator:
                 older = await self._backfill_inputs(start, prices)
             if older:
                 await self.hass.async_add_executor_job(
-                    backfill_house, agg, older["imp"], older["solar"], older["prices"], self.tz, start
+                    backfill_house, agg, older["imp"], older["solar"], older["prices"], self.tz, start, older.get("exp")
                 )
             self.agg.hours[HOUSE_KEY] = agg.hours.get(HOUSE_KEY, {})
+            self.agg.hours[EXPORT_KEY] = agg.hours.get(EXPORT_KEY, {})
             self.house = house
         except Exception:
             _LOGGER.exception("Recalculation of the house failed")
@@ -728,7 +745,15 @@ class EnergydashCoordinator:
 
     # ------------------------------------------------------------------ resets
     async def async_reset(self, scope: str) -> None:
-        """scope 'data': clear calculated results, keep devices. 'all': also remove devices."""
+        """scope 'data': clear calculated results, keep devices. 'all': also remove devices.
+
+        Afterwards the history is calculated again right away (house, and devices for 'data'),
+        so the dashboard is complete without a separate "Opnieuw berekenen".
+        """
+        for task in list(self._tasks):
+            task.cancel()
+        self.busy.clear()
+        self._paused.clear()
         self.agg.clear_all()
         self.house = HouseTracker()
         if scope == "all":
@@ -744,6 +769,10 @@ class EnergydashCoordinator:
         self._subscribe_entities()
         await self.storage.async_save_data(self._data())
         await self.storage.async_save_archive(self._archive())
+        if scope == "all":
+            self.start_task(self.async_recalculate_house(), "reset")
+        else:
+            self.start_task(self.async_recalculate(None, include_house=True), "reset")
         self.notify()
 
     def export_config(self) -> dict[str, Any]:

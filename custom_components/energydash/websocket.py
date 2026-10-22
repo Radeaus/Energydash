@@ -275,8 +275,9 @@ def ws_summary(hass, connection, msg):
         return
     today = dt_util.now().date()
     if msg["period"] == "week":
-        last = today - timedelta(days=7 * msg["offset"])
-        first = last - timedelta(days=6)
+        # Calendar week (Monday to Sunday); the current week is shown so far.
+        first = today - timedelta(days=today.weekday() + 7 * msg["offset"])
+        last = min(first + timedelta(days=6), today)
         prev_first = first - timedelta(days=7)
     elif msg["period"] == "month":
         month = _add_months(today.replace(day=1), -msg["offset"])
