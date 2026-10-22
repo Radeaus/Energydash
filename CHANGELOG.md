@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1 – 22 oktober 2026
+
+- Opgelost: "Config flow could not be loaded: Invalid handler specified" bij het toevoegen van de integratie. De prijsvelden gebruikten een stapgrootte (0,0001) die Home Assistant niet toestaat, waardoor de installatiestap niet kon laden.
+
 ## 1.0.0 – 22 oktober 2026
 
 Eerste versie. Fase 1 tot en met 3 uit `docs/06-roadmap.md` in één release.

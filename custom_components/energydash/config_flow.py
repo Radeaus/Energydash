@@ -36,7 +36,7 @@ RESET_ALL = "all"
 
 ENERGY_SENSOR = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor", device_class="energy"))
 ANY_SENSOR = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
-PRICE = selector.NumberSelector(selector.NumberSelectorConfig(min=-2, max=5, step=0.0001, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="€/kWh"))
+PRICE = selector.NumberSelector(selector.NumberSelectorConfig(min=-2, max=5, step="any", mode=selector.NumberSelectorMode.BOX, unit_of_measurement="€/kWh"))
 
 
 def _base_schema(defaults: dict[str, Any], with_reset: bool = False) -> vol.Schema:
