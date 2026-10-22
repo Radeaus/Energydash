@@ -228,3 +228,7 @@ All data stored by Energydash (`.storage/energydash.*`) is removed as well. If y
 ## Contributing
 
 To work on the code, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+Energydash is released under the [MIT License](LICENSE).
