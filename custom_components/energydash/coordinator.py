@@ -46,7 +46,7 @@ from .const import (
 )
 from .engine import to_kwh, to_watt
 from .history import INVALID, async_get_states, keep_days, numeric_series, unit_of
-from .replay import replay_device, replay_house
+from .replay import replay_device, replay_house, self_use_series
 from .price import PriceProvider, PriceSeries, parse_forecast
 from .storage import EnergydashStorage
 from .tracker import DeviceTracker, HouseTracker, TrackerOutput
@@ -315,6 +315,16 @@ class EnergydashCoordinator:
     def import_now(self) -> float | None:
         return self._state_kwh(self.settings.get(CONF_IMPORT_ENTITY))
 
+    def solar_now(self) -> float | None:
+        """Cumulative solar self-use (production minus export); None without a solar counter."""
+        solar = self._state_kwh(self.settings.get(CONF_SOLAR_ENTITY))
+        if solar is None:
+            return None
+        export = self._state_kwh(self.settings.get(CONF_EXPORT_ENTITY))
+        if self.settings.get(CONF_EXPORT_ENTITY) and export is None:
+            return None  # export briefly unavailable: no bound rather than a wrong one
+        return solar - (export or 0.0)
+
     @callback
     def _on_state(self, event: Event[EventStateChangedData]) -> None:
         new = event.data["new_state"]
@@ -332,6 +342,7 @@ class EnergydashCoordinator:
         t = new.last_changed
         prices = self.price_provider()
         imp = self.import_now()
+        sol = self.solar_now()
         for dev_id, role in roles:
             tr = self.trackers.get(dev_id)
             if tr is None or dev_id in self._paused:
@@ -340,14 +351,14 @@ class EnergydashCoordinator:
                 val = _float(new.state) if new.state not in INVALID else None
                 if val is None:
                     continue
-                out = tr.on_counter(t, to_kwh(val, new.attributes.get("unit_of_measurement")), imp, prices)
+                out = tr.on_counter(t, to_kwh(val, new.attributes.get("unit_of_measurement")), imp, prices, sol)
             elif role in ("power", "power_info"):
                 val = _float(new.state) if new.state not in INVALID else None
                 watt = to_watt(val, new.attributes.get("unit_of_measurement")) if val is not None else None
                 if role == "power_info":
                     tr.power_w = watt
                     continue
-                out = tr.on_power(t, watt, imp, prices)
+                out = tr.on_power(t, watt, imp, prices, sol)
                 if watt is None:
                     tr.power_w = None
             else:
@@ -359,12 +370,13 @@ class EnergydashCoordinator:
         now = dt_util.utcnow()
         prices = self.price_provider()
         imp = self.import_now()
+        sol = self.solar_now()
         for dev in self.devices:
             tr = self.trackers.get(dev["id"])
             if tr is None or dev["id"] in self._paused:
                 continue
             counter = None if dev.get("energy_is_power") else self._state_kwh(dev["energy_entity"])
-            self._apply(dev["id"], tr.tick(now, counter, imp, prices))
+            self._apply(dev["id"], tr.tick(now, counter, imp, prices, sol))
         if HOUSE_KEY not in self._paused:
             s = self.settings
             step = self.house.tick(now, imp, self._state_kwh(s.get(CONF_EXPORT_ENTITY)), self._state_kwh(s.get(CONF_SOLAR_ENTITY)), prices)
@@ -472,13 +484,13 @@ class EnergydashCoordinator:
             old_state = self.trackers[dev["id"]].to_dict() if dev["id"] in self.trackers else None
         tracker = DeviceTracker(dev)
         if old_state and old_state.get("last_time"):
-            keep = {k: old_state[k] for k in ("last_value", "last_time", "last_import", "last_change", "power_w", "power_t", "synth_kwh")}
+            keep = {k: old_state.get(k) for k in ("last_value", "last_time", "last_import", "last_solar", "last_change", "power_w", "power_t", "synth_kwh")}
             tracker.restore(keep)
         self.trackers[dev["id"]] = tracker
         if tracker.last_time is None and not dev["energy_is_power"]:
             value = self._state_kwh(dev["energy_entity"])
             if value is not None:
-                tracker.on_counter(dt_util.utcnow(), value, self.import_now(), self.price_provider())
+                tracker.on_counter(dt_util.utcnow(), value, self.import_now(), self.price_provider(), self.solar_now())
         await self.storage.async_save_config(self.config)
         self._subscribe_entities()
         async_dispatcher_send(self.hass, SIGNAL_DEVICES)
@@ -546,6 +558,7 @@ class EnergydashCoordinator:
         imp_id = self.settings.get(CONF_IMPORT_ENTITY)
         imp_states = await async_get_states(self.hass, [imp_id], start, end)
         imp_series = numeric_series(imp_states.get(imp_id, []), "energy", unit_of(self.hass, imp_id))
+        solar_series = await self._history_solar(start, end)
         for dev_id in ids:
             dev = self.device(dev_id)
             if dev is None:
@@ -558,7 +571,7 @@ class EnergydashCoordinator:
                 states = await async_get_states(self.hass, [e for e in ent if e], start, end)
                 tracker, agg = await self.hass.async_add_executor_job(
                     replay_device, dev, states, imp_series, prices, start, end, self.tz,
-                    unit_of(self.hass, dev["energy_entity"]), unit_of(self.hass, dev.get("power_entity")),
+                    unit_of(self.hass, dev["energy_entity"]), unit_of(self.hass, dev.get("power_entity")), solar_series,
                 )
                 self.agg.clear_series(dev_id)
                 if agg.hours.get(dev_id):
@@ -578,6 +591,17 @@ class EnergydashCoordinator:
             await self.async_recalculate_house(imp_series=imp_series, prices=prices)
         self._save(archive=True)
         self.notify()
+
+    async def _history_solar(self, start: datetime, end: datetime) -> list:
+        """Cumulative solar self-use over the window, for the zon <= self-use bound."""
+        s = self.settings
+        sol_id, exp_id = s.get(CONF_SOLAR_ENTITY), s.get(CONF_EXPORT_ENTITY)
+        if not sol_id:
+            return []
+        states = await async_get_states(self.hass, [i for i in (sol_id, exp_id) if i], start, end)
+        solar = numeric_series(states.get(sol_id, []), "energy", unit_of(self.hass, sol_id))
+        export = numeric_series(states.get(exp_id, []), "energy", unit_of(self.hass, exp_id)) if exp_id else []
+        return self_use_series(solar, export)
 
     async def async_recalculate_house(self, imp_series=None, prices: PriceProvider | None = None) -> None:
         s = self.settings

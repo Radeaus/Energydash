@@ -9,6 +9,7 @@ import { shared } from "./styles";
 import { deviceInfo, ruleText, type Ctx } from "./views";
 
 type Step = "pick" | "type" | "sources" | "tune";
+const CHARGER_OFF_DELAY_MIN = 60;
 
 function radio(checked: boolean, title: string, text: string, onClick: () => void): TemplateResult {
   return html`<button class="radio" role="radio" aria-checked=${checked} @click=${onClick}>
@@ -199,7 +200,9 @@ export class EdAddDevice extends LitElement {
     if (step === "tune") {
       if (!this._isEdit && this._analysis && this._dev.threshold_w === 3 && this._dev.off_delay_min === 5) {
         const p = this._analysis.power_settings;
-        this._dev = { ...this._dev, threshold_w: p.threshold_w, off_delay_min: p.off_delay_min, min_duration_min: p.min_duration_min };
+        // Smart charging pauses for whole quarters when prices are high; those stay one session.
+        const offDelay = this._dev.type === "charger" ? Math.max(p.off_delay_min, CHARGER_OFF_DELAY_MIN) : p.off_delay_min;
+        this._dev = { ...this._dev, threshold_w: p.threshold_w, off_delay_min: offDelay, min_duration_min: p.min_duration_min };
       }
       this._preview = null;
       this._schedulePreview();
@@ -252,7 +255,8 @@ export class EdAddDevice extends LitElement {
     const q = this._q.toLowerCase();
     const match = (c: { name: string; entity_id: string }) => !q || c.name.toLowerCase().includes(q) || c.entity_id.includes(q);
     const f = this._found;
-    const used = new Set(this.ctx.config.devices.map((d) => d.energy_entity));
+    // Counters and power sensors that already belong to a device are not offered again.
+    const used = new Set(this.ctx.config.devices.flatMap((d) => [d.energy_entity, d.power_entity]).filter((e): e is string => !!e));
     const known = new Set([...(f?.suggested ?? []), ...(f?.others ?? [])].map((c) => c.entity_id));
     const extra: EntityOption[] = q.length >= 2
       ? Object.values(this.ctx.hass.states).map(energyFilter).filter((o): o is EntityOption => !!o && !known.has(o.entity_id) && !used.has(o.entity_id) && match(o)).slice(0, 40)
@@ -261,8 +265,9 @@ export class EdAddDevice extends LitElement {
       <div class="grow"><div>${c.name}</div><div class="muted small">${c.entity_id}${c.area ? ` · ${c.area}` : ""}</div></div>
       <span class="chip ${c.power_only ? "warn" : "ok"}">${c.power_only ? t("chip.power") : t("chip.counter")}</span>
     </button>`;
-    const sug = (f?.suggested ?? []).filter(match);
-    const oth = (f?.others ?? []).filter(match);
+    const fresh = (c: Candidate) => !used.has(c.entity_id);
+    const sug = (f?.suggested ?? []).filter((c) => fresh(c) && match(c));
+    const oth = (f?.others ?? []).filter((c) => fresh(c) && match(c));
     return html`
       <label class="field"><span class="lbl">${t("c.search")}</span>
         <input class="input" .value=${this._q} @input=${(e: Event) => (this._q = (e.target as HTMLInputElement).value)} />
@@ -389,8 +394,8 @@ export class EdAddDevice extends LitElement {
           <input class="input" type="number" min="0.5" step="0.5" .value=${String(d.threshold_w)} @change=${(e: Event) => this._set({ threshold_w: Number((e.target as HTMLInputElement).value) || 3 })} />
           ${standby !== undefined ? html`<span class="help">${t("w.standby", { w: num(standby, 1) })}</span>` : nothing}</label>
         <label class="field"><span class="lbl">${t("w.off_delay")}: ${num(d.off_delay_min, 0)} min</span>
-          <input type="range" min="1" max="60" step="1" .value=${String(d.off_delay_min)} @input=${(e: Event) => this._set({ off_delay_min: Number((e.target as HTMLInputElement).value) })} />
-          <span class="help">${t("w.off_delay_help")}</span></label>
+          <input type="range" min="1" max=${d.type === "charger" ? 240 : 60} step=${d.type === "charger" ? 5 : 1} .value=${String(d.off_delay_min)} @input=${(e: Event) => this._set({ off_delay_min: Number((e.target as HTMLInputElement).value) })} />
+          <span class="help">${t(d.type === "charger" ? "w.off_delay_help_charger" : "w.off_delay_help")}</span></label>
         <label class="field"><span class="lbl">${t("w.min_duration")} (min)</span>
           <input class="input" type="number" min="0" step="1" .value=${String(d.min_duration_min)} @change=${(e: Event) => this._set({ min_duration_min: Number((e.target as HTMLInputElement).value) || 0 })} />
           <span class="help">${t("w.min_duration_help")}</span></label>

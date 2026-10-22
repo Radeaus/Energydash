@@ -59,17 +59,22 @@ def counter_delta(previous: float | None, new: float) -> tuple[float, bool]:
     return max(new, 0.0), True
 
 
-def split_net(de: float, d_import: float | None) -> tuple[float, float]:
+def split_net(de: float, d_import: float | None, d_solar: float | None = None) -> tuple[float, float]:
     """Rule 3: net = min(dE, max(dImport, 0)), zon = dE - net.
 
     Without a P1 reading the whole step counts as grid power (conservative, never phantom solar).
+    With a known solar self-use (production minus export) over the same interval, zon can never
+    exceed it: whatever the P1 and the panels together cannot explain counts as grid power.
     """
     if de <= 0:
         return 0.0, 0.0
     if d_import is None:
         return de, 0.0
     net = min(de, max(d_import, 0.0))
-    return net, de - net
+    zon = de - net
+    if d_solar is not None:
+        zon = min(zon, max(d_solar, 0.0))
+    return de - zon, zon
 
 
 def quarter_bounds(t0: datetime, t1: datetime) -> list[tuple[datetime, datetime]]:
@@ -151,6 +156,7 @@ def build_step(
     d_import: float | None,
     prices: Prices,
     notes: list[str] | None = None,
+    d_solar: float | None = None,
 ) -> Step:
     """Turn one counter step into a priced step, split per quarter hour.
 
@@ -159,9 +165,11 @@ def build_step(
     the per-quarter totals add up exactly to the whole-step split.
     """
     notes = list(notes or [])
-    net, zon = split_net(de, d_import)
+    net, zon = split_net(de, d_import, d_solar)
     if d_import is None and de > 0:
         notes.append("no_p1")
+    elif d_solar is not None and de > 0 and zon < split_net(de, d_import)[1] - 1e-9:
+        notes.append("solar_capped")
     span = (t1 - t0).total_seconds()
     segments: list[Segment] = []
     weighted_price = 0.0

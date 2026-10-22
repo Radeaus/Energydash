@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.0 – 22 oktober 2026
+
+### Rekenen
+- Opgelost: spookzon bij tellers die traag verversen, zoals de teller in een Tesla (elke ~30 minuten). De P1 werd dan maar over de laatste 5 minuten gemeten terwijl de teller over een half uur rapporteerde, waardoor laden 's nachts als 90–100% zon telde. Een meetstap beslaat nu minstens de gebruikelijke verversingstijd van de teller.
+- Nieuw: met een opwekteller kan de zon per meetstap nooit meer zijn dan wat je panelen in dat interval zelf in huis leverden. De rest telt als netstroom.
+- Nieuw: stappen die sneller oplopen dan een huisaansluiting kan leveren (> 25 kW) tellen niet mee, zoals laden onderweg bij een teller in de auto. Zichtbaar in de meetstappen.
+- Laadpaal met sessies uit het verbruik: "Klaar na" standaard minstens 60 minuten en instelbaar tot 4 uur, zodat pauzes van slim laden één sessie blijven.
+
+### Paneel
+- Lege staat toont alleen **Apparaat toevoegen**, zonder de lijst **Ontdekt**.
+- Knoppen hebben weer een normale grootte (het pluspictogram in de lege staat was 64 px).
+- **Apparaat toevoegen** biedt tellers en vermogenssensoren die al bij een apparaat horen niet nog eens aan.
+- De gegevenscheck van een teller in de auto zegt nu dat die ook laden onderweg meetelt.
+
+**Na bijwerken:** kies bij elk apparaat **Opnieuw berekenen** (of Instellingen → **Alles opnieuw berekenen**) om oude sessies met de nieuwe regels door te rekenen.
+
 ## 1.0.1 – 22 oktober 2026
 
 - Opgelost: "Config flow could not be loaded: Invalid handler specified" bij het toevoegen van de integratie. De prijsvelden gebruikten een stapgrootte (0,0001) die Home Assistant niet toestaat, waardoor de installatiestap niet kon laden.

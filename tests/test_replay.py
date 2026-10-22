@@ -101,3 +101,81 @@ def test_compressed_recorder_rows():
     assert series[1][0] == at(2)
     wh = numeric_series([{"s": "1500", "lu": at(0).timestamp()}], "energy", "Wh")
     assert wh[0][1] == pytest.approx(1.5)
+
+
+def _night_p1(until_min: int, charging: tuple[int, int], kw: float) -> list[S]:
+    """P1 import every minute: 0.3 kW house, plus `kw` while charging."""
+    imp, rows = 1000.0, []
+    for m in range(until_min + 1):
+        rows.append(S(f"{imp:.5f}", at(m)))
+        imp += (0.3 + (kw if charging[0] <= m < charging[1] else 0.0)) / 60
+    return rows
+
+
+def test_slow_in_car_counter_at_night_is_grid():
+    """An in-car counter polled every 30 minutes, charging 11 kW at night: no phantom solar.
+
+    The P1 base is refreshed every 5 minutes while the counter is quiet; the step must still
+    cover the 30 minutes the counter reports about (rule 3: same interval for both counters).
+    """
+    p1 = _night_p1(6 * 60, (60, 5 * 60), 11.0)
+    counter = [S("20.0", at(0))]
+    value = 20.0
+    for m in range(90, 5 * 60 + 1, 30):
+        value += 11 * (min(m, 300) - max(m - 30, 60)) / 60
+        counter.append(S(f"{value:.3f}", at(m)))
+    dev = {"id": "tesla", "name": "Tesla", "type": "charger", "energy_entity": "c", "session_source": "power",
+           "threshold_w": 50, "off_delay_min": 60, "min_duration_min": 10}
+    _, agg = replay_device(dev, {"c": counter}, numeric_series(p1, "energy", "kWh"), prices(), START, at(8 * 60), AMS, "kWh", None)
+    assert len(agg.sessions) == 1
+    f = agg.sessions[0]["fields"]
+    assert f[0] == pytest.approx(44.0, abs=0.01)
+    assert f[1] == pytest.approx(0.0, abs=0.01)
+
+
+def test_charging_elsewhere_is_not_counted():
+    """38.8 kWh added in 30 minutes (a fast charger on the road) while the house imports nothing extra."""
+    p1 = _night_p1(4 * 60, (0, 0), 0.0)
+    counter = [S("12.3", at(0)), S("0.0", at(2 * 60)), S("38.76", at(2 * 60 + 30))]  # reset on plugging in
+    dev = {"id": "tesla", "name": "Tesla", "type": "charger", "energy_entity": "c", "session_source": "power",
+           "threshold_w": 50, "off_delay_min": 60, "min_duration_min": 10}
+    _, agg = replay_device(dev, {"c": counter}, numeric_series(p1, "energy", "kWh"), prices(), START, at(4 * 60), AMS, "kWh", None)
+    assert agg.sessions == []
+    assert sum(v[0] for v in agg.hours.get("tesla", {}).values()) == pytest.approx(0.0)
+    assert any("implausible" in s["notes"] for s in agg.steplog["tesla"])
+
+
+def test_solar_bounded_by_own_production():
+    """P1 imports nothing, but the panels only covered 1 of the 3 kWh: the rest is grid, not solar."""
+    p1 = [S("500.0", at(0)), S("500.0", at(12 * 60)), S("500.0", at(13 * 60))]
+    counter = [S("10.0", at(0))]
+    solar = [(at(0), 100.0)]
+    value = 10.0
+    for m in range(12 * 60 + 1, 13 * 60 + 1):
+        value += 3 / 60
+        counter.append(S(f"{value:.4f}", at(m)))
+        solar.append((at(m), 100.0 + (m - 12 * 60) / 60))
+    dev = {"id": "boiler", "name": "Boiler", "type": "continuous", "energy_entity": "c"}
+    _, agg = replay_device(dev, {"c": counter}, numeric_series(p1, "energy", "kWh"), prices(), START, at(14 * 60), AMS,
+                           "kWh", None, solar)
+    kwh = sum(v[0] for v in agg.hours["boiler"].values())
+    zon = sum(v[1] for v in agg.hours["boiler"].values())
+    assert kwh == pytest.approx(3.0, abs=0.01)
+    assert zon == pytest.approx(1.0, abs=0.03)
+
+
+def test_charger_price_pauses_stay_one_session():
+    """Smart charging on a dynamic contract: 15 minutes on, 15 minutes off, then 3 hours on."""
+    counter = [S("0.0", at(0))]
+    value = 0.0
+    on = [m for m in range(60, 180) if (m - 60) // 15 % 2 == 0] + list(range(195, 375))
+    for m in on:
+        value += 11 / 60
+        counter.append(S(f"{value:.4f}", at(m + 1)))
+    p1 = _night_p1(8 * 60, (0, 0), 0.0)
+    p1 = [S(f"{float(r.state) + 11 / 60 * sum(1 for m in on if m < (r.last_changed - START).total_seconds() / 60):.5f}", r.last_changed) for r in p1]
+    dev = {"id": "laadpaal", "name": "Laadpaal", "type": "charger", "energy_entity": "c", "session_source": "power",
+           "threshold_w": 50, "off_delay_min": 60, "min_duration_min": 10}
+    _, agg = replay_device(dev, {"c": counter}, numeric_series(p1, "energy", "kWh"), prices(), START, at(8 * 60), AMS, "kWh", None)
+    assert len(agg.sessions) == 1
+    assert agg.sessions[0]["fields"][0] == pytest.approx(11 / 60 * len(on), abs=0.01)

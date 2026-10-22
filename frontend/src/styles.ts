@@ -39,6 +39,7 @@ export const shared = css`
     background: var(--ed-pri); color: var(--text-primary-color, #fff);
     display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
   }
+  button.btn ha-icon { --mdc-icon-size: 18px; }
   button.btn[disabled] { opacity: 0.45; cursor: default; }
   button.btn.secondary { background: transparent; color: var(--ed-pri); border-color: var(--ed-line); }
   button.btn.text { background: transparent; color: var(--ed-pri); padding: 8px 10px; }

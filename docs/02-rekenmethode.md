@@ -16,6 +16,9 @@ Per apparaat is er één energiebron:
 - Dan geldt: `dE = nieuwe waarde` (niet het negatieve verschil).
 - `unavailable`/`unknown` overslaan; de volgende geldige waarde levert het verschil over de hele onderbreking.
 
+### Onmogelijke stappen
+Loopt de teller sneller op dan een huisaansluiting kan leveren (meer dan 25 kW gemiddeld sinds de vorige tellerstand), dan telt die stap niet mee en staat er `implausible` in de meetstappen. Dat gebeurt bij een teller in de auto (`charge_energy_added`) na laden onderweg, bijvoorbeeld 38,8 kWh in 30 minuten bij een snellader, en bij een teller die even terugvalt naar 0 en daarna weer op zijn oude stand staat.
+
 ### Waarom geen vermogen (aangetoond)
 De laadpaal (`sensor.charge_laadpaal_laadpaalvermogen`) ververst via de Zonneplan-cloud elke 5 minuten. De P1 ververst elke seconde. De oude methode rekende `zon = laadvermogen − P1`:
 
@@ -30,6 +33,9 @@ Per meetstap (interval `[t0, t1]`, energie `dE` van het apparaat):
 dImport = P1_import(t1) − P1_import(t0)      # kWh-teller, niet vermogen
 net     = min(dE, max(dImport, 0))
 zon     = dE − net
+# met een opwekteller: zon ≤ eigen gebruik van de panelen in hetzelfde interval
+zon     = min(zon, dOpwek − dExport)
+net     = dE − zon
 ```
 
 Betekenis: zon dekt eerst de rest van het huis; alleen wat het apparaat méér nodig had dan wat er overbleef, kwam uit het net. Dit is ook de marginale kostprijs: zonder het apparaat was de import in dat interval met `net` lager geweest.
@@ -38,9 +44,15 @@ Eigenschappen:
 - `zon + net = dE`, dus de som klopt altijd met de teller van het apparaat.
 - 's Nachts is `dImport ≥ dE` (huis + apparaat), dus `zon = 0`. Geen spookzon mogelijk.
 - Hetzelfde interval gebruiken voor beide tellers is essentieel.
+- Is er een opwekteller ingesteld, dan kan `zon` nooit meer zijn dan wat de panelen in dat interval zelf in huis leverden (opwek min teruglevering). Wat P1 en panelen samen niet verklaren, telt als netstroom (notitie `solar_capped`). Zonder opwekteller vervalt deze grens.
 
 ### Basis vasthouden tussen sessies
 Zolang het apparaat niet verbruikt, wordt de P1-basis (`P1_import(t0)` en `t0`) periodiek ververst (bijv. elke 5 minuten). Dan beslaat de eerste meetstap na een start alleen de laatste paar minuten en niet het hele idle-uur ervoor.
+
+Dat mag alleen als de teller snel genoeg ververst. Een teller die maar elke 30 minuten een stand doorgeeft (de teller in een Tesla, opgehaald via de cloud) meldt bij de eerste stand het verbruik van een half uur. Zou de P1 dan maar over de laatste 5 minuten gemeten worden, dan lijkt het meeste zon, ook 's nachts. Daarom:
+- De tracker onthoudt hoe vaak de teller tijdens verbruik verandert (mediaan van de laatste 15 tussenpozen tot 3 uur).
+- Een meetstap begint bij de nieuwste basis die minstens één zo'n tussenpoos vóór de nieuwe stand ligt. De oudere basispunten (tot 4 uur) blijven daarvoor bewaard.
+- Zou ook dat interval een onmogelijk vermogen (> 25 kW) geven, dan begint de stap bij de vorige tellerstand.
 
 ### Bekende beperking
 Een cloud-teller loopt iets achter op de realtime P1 (latency van de cloud). Bij constant verbruik maakt dat niets uit; bij snel wisselende zon kan de split per stap iets verschuiven. De totale energie blijft exact, want die komt van de teller van het apparaat.
@@ -91,6 +103,7 @@ Per apparaat één van drie soorten:
 
 ### Laadpaal-specifiek
 - Pauzes van slim laden binnen één inplug-sessie blijven één sessie (status-entiteit, niet verbruik).
+- Sessies uit het verbruik bij een laadpaal: "Klaar na" staat standaard op minstens 60 minuten (instelbaar tot 4 uur). Met een dynamisch contract pauzeert slim laden vaak een of meer kwartieren; die pauzes horen bij dezelfde sessie.
 - Bij loskoppelen tijdens het laden kan de laatste meetstap (≤ 5 min) verloren gaan: de teller springt naar 0 voordat de laatste stand binnenkomt. Dat geldt ook voor de leverancier zelf.
 
 ## 6. Sluipverbruik en "Rest van het huis"

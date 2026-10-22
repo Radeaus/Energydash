@@ -8,11 +8,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from statistics import median
 from typing import Any
 
 from .const import (
     BASE_IDLE_S,
     BASE_REFRESH_S,
+    GAP_LEARN_MAX_S,
+    MAX_PLAUSIBLE_W,
     MAX_STEP_S,
     SESSION_FROM_ENTITY,
     SESSION_GRACE_S,
@@ -23,6 +26,10 @@ from .price import parse_time
 from .sessions import EntitySessionDetector, PowerSessionDetector, SessionEvent
 
 SYNTH_MIN_STEP_S = 60
+MAX_BASES = 48  # base points kept between two counter changes (4 hours of 5-minute refreshes)
+MAX_GAPS = 15
+
+Base = tuple  # (time, P1 import, solar self-use)
 
 
 @dataclass
@@ -52,7 +59,11 @@ class DeviceTracker:
         self.last_value: float | None = None
         self.last_time: datetime | None = None
         self.last_import: float | None = None
+        self.last_solar: float | None = None
         self.last_change: datetime | None = None
+        # Older base points since the last counter change; (last_time, last_import, last_solar) is the newest.
+        self.bases: list[Base] = []
+        self.gaps: list[float] = []  # recent seconds between counter changes: how slow the counter reports
         # power-only integration
         self.power_w: float | None = None
         self.power_t: datetime | None = None
@@ -72,11 +83,17 @@ class DeviceTracker:
         self.finishing: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------ inputs
-    def on_counter(self, t: datetime, value_kwh: float, import_kwh: float | None, prices: Prices) -> TrackerOutput:
-        """A new reading of the kWh counter (or the synthetic counter for power-only devices)."""
+    def on_counter(
+        self, t: datetime, value_kwh: float, import_kwh: float | None, prices: Prices, solar_kwh: float | None = None
+    ) -> TrackerOutput:
+        """A new reading of the kWh counter (or the synthetic counter for power-only devices).
+
+        `solar_kwh` is the cumulative solar self-use (production minus export), if known.
+        """
         out = self._housekeeping(t)
         if self.last_value is None or self.last_time is None:
-            self.last_value, self.last_time, self.last_import = value_kwh, t, import_kwh
+            self.last_value = value_kwh
+            self._set_base(t, import_kwh, solar_kwh)
             out.changed = True
             return out
         if t <= self.last_time:
@@ -86,28 +103,44 @@ class DeviceTracker:
             if value_kwh == self.last_value:
                 return out
         notes = ["reset"] if reset else []
-        if (t - self.last_time).total_seconds() > MAX_STEP_S:
+        first = self.bases[0][0] if self.bases else self.last_time
+        if de > 0 and de / ((t - first).total_seconds() / 3600) * 1000 > MAX_PLAUSIBLE_W:
+            # Faster than any home connection: charged elsewhere (in-car counter) or a counter glitch.
+            notes.append("implausible")
+            de = 0.0
+        t0, imp0, sol0 = self._base_for(t, de)
+        if (t - t0).total_seconds() > MAX_STEP_S:
             notes.append("long_gap")
         d_import = None
-        if import_kwh is not None and self.last_import is not None:
-            d_import, _ = counter_delta(self.last_import, import_kwh)
-        step = build_step(self.last_time, t, de, d_import, prices, notes)
+        if import_kwh is not None and imp0 is not None:
+            d_import, _ = counter_delta(imp0, import_kwh)
+        d_solar = None
+        if solar_kwh is not None and sol0 is not None:
+            d_solar = solar_kwh - sol0
+        step = build_step(t0, t, de, d_import, prices, notes, d_solar)
         out.steps.append(step)
         out.changed = True
         if de > 0:
+            if self.last_change is not None:
+                gap = (t - self.last_change).total_seconds()
+                if 0 < gap <= GAP_LEARN_MAX_S:
+                    self.gaps = (self.gaps + [gap])[-MAX_GAPS:]
             self.last_change = t
         if isinstance(self.detector, PowerSessionDetector) and not self.config.get("power_entity") and not self.power_only:
-            hours = (t - self.last_time).total_seconds() / 3600
+            hours = (t - t0).total_seconds() / 3600
             if hours > 0:
-                out.extend(self._session_events(self.detector.on_interval(self.last_time, t, de / hours * 1000), t))
+                out.extend(self._session_events(self.detector.on_interval(t0, t, de / hours * 1000), t))
         self._attribute(step)
-        self.last_value, self.last_time, self.last_import = value_kwh, t, import_kwh
+        self.last_value = value_kwh
+        self._set_base(t, import_kwh, solar_kwh)
         return out
 
-    def on_power(self, t: datetime, watt: float | None, import_kwh: float | None, prices: Prices) -> TrackerOutput:
+    def on_power(
+        self, t: datetime, watt: float | None, import_kwh: float | None, prices: Prices, solar_kwh: float | None = None
+    ) -> TrackerOutput:
         out = self._housekeeping(t)
         if self.power_only:
-            out.extend(self._integrate(t, import_kwh, prices, watt))
+            out.extend(self._integrate(t, import_kwh, prices, watt, solar_kwh))
         if watt is not None and isinstance(self.detector, PowerSessionDetector):
             out.extend(self._session_events(self.detector.on_power(t, watt), t))
         if watt is not None:
@@ -120,21 +153,55 @@ class DeviceTracker:
             out.extend(self._session_events(self.detector.on_state(t, state), t))
         return out
 
-    def tick(self, t: datetime, counter_kwh: float | None, import_kwh: float | None, prices: Prices) -> TrackerOutput:
+    def tick(
+        self, t: datetime, counter_kwh: float | None, import_kwh: float | None, prices: Prices, solar_kwh: float | None = None
+    ) -> TrackerOutput:
         """Periodic: base refresh (docs/02 'basis vasthouden'), session timeouts, power integration."""
         out = self._housekeeping(t)
         if self.power_only:
-            out.extend(self._integrate(t, import_kwh, prices, self.power_w))
+            out.extend(self._integrate(t, import_kwh, prices, self.power_w, solar_kwh))
         elif counter_kwh is not None and self.last_value is not None and counter_kwh != self.last_value:
-            out.extend(self.on_counter(t, counter_kwh, import_kwh, prices))
+            out.extend(self.on_counter(t, counter_kwh, import_kwh, prices, solar_kwh))
         if self.last_time is not None and import_kwh is not None and self._idle(t):
             if (t - self.last_time).total_seconds() >= BASE_REFRESH_S:
-                self.last_time = t
-                self.last_import = import_kwh
+                # Keep the older bases: a slow counter (an in-car meter polled every 30 minutes)
+                # reports use that happened before this refresh, see _base_for.
+                self.bases.append((self.last_time, self.last_import, self.last_solar))
+                if len(self.bases) > MAX_BASES:
+                    self.bases = [self.bases[0], *self.bases[-(MAX_BASES - 1):]]
+                self.last_time, self.last_import, self.last_solar = t, import_kwh, solar_kwh
                 out.changed = True
         return out
 
     # ----------------------------------------------------------------- helpers
+    def _set_base(self, t: datetime, import_kwh: float | None, solar_kwh: float | None) -> None:
+        self.last_time, self.last_import, self.last_solar = t, import_kwh, solar_kwh
+        self.bases = []
+
+    def typical_gap(self) -> float:
+        """Median seconds between counter changes while in use (0 until enough are seen)."""
+        return median(self.gaps) if len(self.gaps) >= 3 else 0.0
+
+    def _base_for(self, t: datetime, de: float) -> Base:
+        """Start of a step: the newest base at least one typical update gap before t.
+
+        A counter that reports every 30 minutes covers 30 minutes of use, even if the P1 base was
+        refreshed 2 minutes ago. Measuring the P1 over only those 2 minutes would call most of the
+        energy solar (rule 3: both counters over exactly the same interval). If even that interval
+        is physically impossible, fall back to the last counter change.
+        """
+        points = [*self.bases, (self.last_time, self.last_import, self.last_solar)]
+        need = self.typical_gap()
+        chosen = points[0]
+        for p in reversed(points):
+            if (t - p[0]).total_seconds() >= need:
+                chosen = p
+                break
+        hours = (t - chosen[0]).total_seconds() / 3600
+        if de > 0 and (hours <= 0 or de / hours * 1000 > MAX_PLAUSIBLE_W):
+            chosen = points[0]
+        return chosen
+
     def _idle(self, t: datetime) -> bool:
         if self.power_only:
             return False  # the synthetic counter advances its own base
@@ -145,7 +212,9 @@ class DeviceTracker:
             return False
         return True
 
-    def _integrate(self, t: datetime, import_kwh: float | None, prices: Prices, new_w: float | None) -> TrackerOutput:
+    def _integrate(
+        self, t: datetime, import_kwh: float | None, prices: Prices, new_w: float | None, solar_kwh: float | None = None
+    ) -> TrackerOutput:
         out = TrackerOutput()
         if self.power_t is not None and self.power_w is not None and t > self.power_t:
             self.synth_kwh += max(self.power_w, 0.0) * (t - self.power_t).total_seconds() / 3_600_000
@@ -154,7 +223,7 @@ class DeviceTracker:
         if new_w is not None:
             self.power_w = new_w
         if self.last_time is None or (t - self.last_time).total_seconds() >= SYNTH_MIN_STEP_S:
-            out.extend(self.on_counter(t, self.synth_kwh, import_kwh, prices))
+            out.extend(self.on_counter(t, self.synth_kwh, import_kwh, prices, solar_kwh))
         return out
 
     def _housekeeping(self, t: datetime) -> TrackerOutput:
@@ -251,6 +320,9 @@ class DeviceTracker:
             "last_value": self.last_value,
             "last_time": iso(self.last_time),
             "last_import": self.last_import,
+            "last_solar": self.last_solar,
+            "bases": [[iso(bt), bi, bs] for bt, bi, bs in self.bases],
+            "gaps": self.gaps,
             "last_change": iso(self.last_change),
             "power_w": self.power_w,
             "power_t": iso(self.power_t),
@@ -266,6 +338,9 @@ class DeviceTracker:
         self.last_value = data.get("last_value")
         self.last_time = parse_time(data.get("last_time"))
         self.last_import = data.get("last_import")
+        self.last_solar = data.get("last_solar")
+        self.bases = [(parse_time(b[0]), b[1], b[2]) for b in data.get("bases") or [] if parse_time(b[0])]
+        self.gaps = [float(g) for g in data.get("gaps") or []]
         self.last_change = parse_time(data.get("last_change"))
         self.power_w = data.get("power_w")
         self.power_t = parse_time(data.get("power_t"))

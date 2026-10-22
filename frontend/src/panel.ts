@@ -33,7 +33,6 @@ class EnergydashPanel extends LitElement {
   declare _confirm: Confirm | null;
   declare _toast: string;
   declare _tick: number;
-  declare _found: { suggested: Candidate[]; others: Candidate[] } | null;
   declare _error: string;
 
   static properties = {
@@ -47,7 +46,6 @@ class EnergydashPanel extends LitElement {
     _confirm: { state: true },
     _toast: { state: true },
     _tick: { state: true },
-    _found: { state: true },
     _error: { state: true },
   };
 
@@ -64,7 +62,6 @@ class EnergydashPanel extends LitElement {
     this._confirm = null;
     this._toast = "";
     this._tick = 0;
-    this._found = null;
     this._error = "";
     try {
       const saved = window.localStorage.getItem("energydash.tab") as Tab | null;
@@ -98,7 +95,6 @@ class EnergydashPanel extends LitElement {
       this._config = cfg;
       this._tick += 1;
       this._error = "";
-      if (!cfg.devices.length) this._found = await api.discover(this.hass);
     } catch (e) {
       this._error = String((e as Error).message ?? e);
     }
@@ -159,7 +155,7 @@ class EnergydashPanel extends LitElement {
       :host([narrow]) main { padding-bottom: 72px; }
       .empty { max-width: 720px; margin: 0 auto; padding: 32px 16px; display: grid; gap: 16px; }
       .hero { text-align: center; display: grid; justify-items: center; gap: 8px; padding: 24px 8px; }
-      .hero ha-icon { --mdc-icon-size: 64px; color: var(--ed-text2); }
+      .hero > ha-icon { --mdc-icon-size: 64px; color: var(--ed-text2); }
       .banner { max-width: 1200px; margin: 12px auto 0; padding: 0 16px; }
       .toast {
         position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 20; background: var(--ed-text); color: var(--ed-card);
@@ -214,28 +210,12 @@ class EnergydashPanel extends LitElement {
 
   private _renderEmpty() {
     const cfg = this._config!;
-    const found = this._found?.suggested ?? [];
     return html`<div class="empty">
       <div class="card hero">
         <ha-icon icon="mdi:cash-clock"></ha-icon>
         <h2>${t("empty.title")}</h2>
         <p class="muted">${t("empty.text")}</p>
         ${cfg.is_admin ? html`<button class="btn" @click=${() => (this._dialog = { kind: "add" })}><ha-icon icon="mdi:plus"></ha-icon>${t("c.add_device")}</button>` : html`<p class="muted small">${t("c.admin_only")}</p>`}
-      </div>
-      <div class="card">
-        <h3>${t("empty.discovered")}</h3>
-        <p class="muted small">${t("empty.discovered_text")}</p>
-        ${this._found === null
-          ? html`<p class="muted">${t("c.loading")}</p>`
-          : found.length === 0
-            ? html`<p class="muted">${t("empty.none_found")}</p>`
-            : html`<div class="list">${found.map((c) => html`<div class="item">
-                <div class="grow">
-                  <div>${c.name} ${c.power_only ? html`<span class="chip warn">${t("chip.power")}</span>` : nothing}</div>
-                  <div class="muted small">${t(c.in_energy_prefs ? "src.in_prefs" : "src.not_in_prefs")}${c.device_name ? ` · ${c.device_name}` : ""}${c.area ? `, ${c.area}` : ""}</div>
-                </div>
-                ${cfg.is_admin ? html`<button class="btn secondary" @click=${() => (this._dialog = { kind: "add", candidate: c })}>${t("c.add")}</button>` : nothing}
-              </div>`)}</div>`}
       </div>
       <p class="muted small" style="text-align:center">${t("local")}</p>
     </div>`;

@@ -78,7 +78,7 @@ const cardCss = css`
   .empty ha-icon { --mdc-icon-size: 64px; color: var(--ed-text2); }
   .icon-bubble { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none; background: color-mix(in srgb, var(--ed-pri) 10%, transparent); color: var(--ed-pri); }
   .cost { font-variant-numeric: tabular-nums; font-weight: 500; }
-  .fab { position: fixed; right: 24px; bottom: 24px; box-shadow: 0 4px 12px rgba(0,0,0,.25); z-index: 2; padding: 14px 20px; }
+  .fab { position: fixed; right: 24px; bottom: 24px; box-shadow: 0 4px 12px rgba(0,0,0,.25); z-index: 2; }
 `;
 
 // ------------------------------------------------------------------ dashboard

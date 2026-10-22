@@ -73,11 +73,21 @@ def text_series(states: list[Any]) -> list[tuple[datetime, str]]:
     return [(t, str(v)) for t, v in map(point, states)]
 
 
-def replay_device(dev, states, imp_series, prices, start, end, tz, energy_unit, power_unit):
+def self_use_series(solar: list[tuple[datetime, float]], export: list[tuple[datetime, float]]) -> list[tuple[datetime, float]]:
+    """Cumulative solar self-use: production minus export (export 0 when there is no export counter)."""
+    if not solar:
+        return []
+    sol, exp = StepLookup(solar), StepLookup(export)
+    times = sorted({t for t, _ in solar} | {t for t, _ in export if t >= solar[0][0]})
+    return [(t, sol.at(t) - (exp.at(t) or 0.0)) for t in times]  # type: ignore[operator]
+
+
+def replay_device(dev, states, imp_series, prices, start, end, tz, energy_unit, power_unit, solar_series=None):
     """Feed history to a fresh tracker in time order (runs in the executor)."""
     tracker = DeviceTracker(dev)
     agg = Aggregator()
     imp = StepLookup(imp_series)
+    sol = StepLookup(solar_series or [])
     events: list[tuple[datetime, int, str, Any]] = []
     if dev.get("energy_is_power"):
         for t, w in numeric_series(states.get(dev["energy_entity"], []), "power", energy_unit):
@@ -100,13 +110,13 @@ def replay_device(dev, states, imp_series, prices, start, end, tz, energy_unit, 
     events.sort(key=lambda e: (e[0], e[1]))
     for t, _, kind, value in events:
         if kind == "energy":
-            out = tracker.on_counter(t, value, imp.at(t), prices)
+            out = tracker.on_counter(t, value, imp.at(t), prices, sol.at(t))
         elif kind == "power":
-            out = tracker.on_power(t, value, imp.at(t), prices)
+            out = tracker.on_power(t, value, imp.at(t), prices, sol.at(t))
         elif kind == "session":
             out = tracker.on_session_state(t, value)
         else:
-            out = tracker.tick(t, counter.at(t) if counter else None, imp.at(t), prices)
+            out = tracker.tick(t, counter.at(t) if counter else None, imp.at(t), prices, sol.at(t))
         for step in out.steps:
             agg.add_step(dev["id"], step, tz)
         for sess in out.sessions:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "energydash"
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 
 PANEL_URL_PATH = "energydash"
 PANEL_COMPONENT = "energydash-panel"
@@ -57,6 +57,8 @@ BASE_IDLE_S = 600  # device counts as idle after 10 minutes without counter chan
 SESSION_GRACE_S = 600  # steps arriving up to 10 minutes after a session ended still belong to it
 HOUSE_TICK_S = 60
 MAX_STEP_S = 6 * 3600  # longer gaps are still counted, but flagged in the step log
+MAX_PLAUSIBLE_W = 25_000  # more than a home connection or 22 kW charger delivers: not used at home
+GAP_LEARN_MAX_S = 3 * 3600  # counter update gaps up to this long teach the tracker how slow a counter is
 
 # Retention
 HOURLY_RETENTION_DAYS = 400
