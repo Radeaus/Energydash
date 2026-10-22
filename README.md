@@ -4,6 +4,8 @@ Energydash is a custom integration for [Home Assistant](https://www.home-assista
 
 For example, you can see what a car charging session cost, how much of it came from your own solar panels, and which part of your bill belongs to the rest of the house.
 
+To look around first, open the [demo](https://radeaus.github.io/Energydash/). It runs the real panel with a simulated household in your browser, without Home Assistant.
+
 Energydash works in any country and currency that Home Assistant supports. It is available in English, Dutch, German, Spanish, and French, and follows the language of your Home Assistant profile.
 
 Current version: 1.0.7 (October 22, 2026). The [changelog](CHANGELOG.md) lists what is in each version.

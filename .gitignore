@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 frontend/node_modules/
 .DS_Store
+demo/data.json
+demo/energydash-panel.js
+demo/icon.png

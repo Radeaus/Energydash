@@ -14,6 +14,25 @@ The tests cover the calculation core, the back-calculation, and the detection. T
 
 The bundled panel (`energydash-panel.js`) is part of the repository, so HACS can install it directly. Rebuild it after every change in `frontend/src`. GitHub Actions checks hassfest, HACS, the tests, and whether the bundle is up to date.
 
+## Demo
+
+The [demo](https://radeaus.github.io/Energydash/) is the real panel with a simulated Home Assistant, published on GitHub Pages by `.github/workflows/demo.yml` on every push to `main`.
+
+- `demo/generate.py` simulates a household for 400 days and runs it through the calculation core. It writes `data.json`.
+- `demo/demo.js` answers the panel's websocket calls from that data, with the summary and baseload queries ported from `aggregate.py`. Keep them in step when those queries change.
+- `demo/icons.js` holds the icons the panel uses, because Home Assistant normally draws them.
+
+To try it locally:
+
+```bash
+python demo/generate.py demo/data.json
+cp custom_components/energydash/frontend/energydash-panel.js demo/
+cp custom_components/energydash/brand/icon.png demo/
+python -m http.server -d demo 8000
+```
+
+Then open `http://localhost:8000`. Don't commit the copied files or `data.json`.
+
 ## Translations
 
 The integration texts are in `custom_components/energydash/translations/`. The panel texts are in `frontend/src/i18n.ts` (English and Dutch) and `frontend/src/locales/` (German, Spanish, and French). To add a language, add `translations/<code>.json`, a `locales/<code>.ts`, and the code in `DICTS` in `i18n.ts` and in `LANGUAGES` in `tests/test_translations.py`. Custom integrations don't use `strings.json` and can't use `[%key:...%]` references, so write every text out. `pytest` checks that all languages have the same keys and placeholders. See [UX and design](docs/04-ux-and-design.md#translations) for the rules.
