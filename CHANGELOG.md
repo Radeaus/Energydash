@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.4 – 22 oktober 2026
+
+### Rekenen
+- Opgelost: zonnestroom en teruglevering kregen in de herberekende historie een terugleverprijs van €0. De terugleverprijs komt uit het forecast-attribuut van de prijs-entiteit, maar Home Assistant bewaart attributen groter dan 16 kB niet in de recorder (de forecast van Zonneplan is groter). Voor de historie leiden we de terugleverprijs nu af uit de stroomprijs, met de verhouding uit de actuele forecast (all-in = (marktprijs + belasting) × btw, teruglevering = marktprijs). Een vaste terugleverprijs of een eigen terugleverprijs-entiteit gaat altijd voor.
+- Na bijwerken wordt alles eenmalig vanzelf opnieuw berekend.
+
+### Dashboard
+- "Wat betaal je per kWh?": de uitleg staat nu op de hele regel. Balk = wat je echt betaalde per kWh; streepje = de netprijs, wat dezelfde kWh hadden gekost als alles uit het net was gekomen, op de momenten dat dit apparaat stroom gebruikte.
+
 ## 1.2.3 – 22 oktober 2026
 
 ### Dashboard

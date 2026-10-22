@@ -50,7 +50,7 @@ from .engine import to_kwh, to_watt
 from .backfill import HOUR, backfill_device, backfill_house, prices_from_cost, self_use_hourly
 from .history import INVALID, async_get_hourly, async_get_states, keep_days, numeric_series, unit_of
 from .replay import replay_device, replay_house, self_use_series
-from .price import PriceProvider, PriceSeries, parse_forecast
+from .price import PriceProvider, PriceSeries, export_relation, parse_forecast
 from .storage import EnergydashStorage
 from .tracker import DeviceTracker, HouseTracker, TrackerOutput
 
@@ -59,6 +59,8 @@ _LOGGER = logging.getLogger(__name__)
 SIGNAL_UPDATE = f"{DOMAIN}_update"
 SIGNAL_DEVICES = f"{DOMAIN}_devices"
 OBSERVED_PRICE_DAYS = 2
+# Bump to recalculate everything once after an update that changes calculated results.
+CALC_VERSION = 2
 MAX_RECALC_DAYS = 30
 BACKFILL_DAYS = 366  # older than the recorder window: hourly long-term statistics
 
@@ -162,7 +164,11 @@ class EnergydashCoordinator:
         await self._async_seed_prices()
         self._subscribe_entities()
         self._unsubs.append(async_track_time_interval(self.hass, self._on_tick, timedelta(seconds=HOUSE_TICK_S)))
-        if self.config.pop("pending_recalc", False):
+        outdated = self.devices and self.config.get("calc_version", 1) < CALC_VERSION
+        if self.config.get("calc_version") != CALC_VERSION:
+            self.config["calc_version"] = CALC_VERSION
+            await self.storage.async_save_config(self.config)
+        if self.config.pop("pending_recalc", False) or outdated:
             await self.storage.async_save_config(self.config)
             self.start_task(self.async_recalculate(None, include_house=True), "pending")
         elif not self.agg.hours.get(HOUSE_KEY) and self.house.last_time is None:
@@ -282,6 +288,7 @@ class EnergydashCoordinator:
             export_observed=export_observed,
             fallback=self.prices.current,
             export_fallback=export_fixed,
+            export_from_import=None if s.get(CONF_EXPORT_PRICE_ENTITY) else self._export_relation(),
         )
 
     # -------------------------------------------------------------- listeners
@@ -565,7 +572,12 @@ class EnergydashCoordinator:
         return PriceProvider(
             observed=observed, export_series=export_series, export_observed=export_observed,
             fallback=self.prices.current, export_fallback=export_fixed,
+            export_from_import=None if export_id else self._export_relation(),
         )
+
+    def _export_relation(self) -> tuple[float, float] | None:
+        """Export price from the import price, learned from the live forecast (see export_relation)."""
+        return export_relation(self.prices.forecast, self.prices.forecast_export)
 
     async def async_recalculate(self, device_ids: list[str] | None = None, include_house: bool = False) -> None:
         """Replace calculated results by a recalculation over the recorder history."""
@@ -662,26 +674,13 @@ class EnergydashCoordinator:
         if export_id:
             export = (await async_get_hourly(self.hass, [export_id], start, before, "mean")).get(export_id, {})
         export_fixed = _float(s.get(CONF_EXPORT_PRICE_FIXED))
-        if not export and export_fixed is None and mean:
-            # Export prices only come from the forecast attribute, which statistics do not keep:
-            # use the export/import ratio of the recorder window.
-            ratio = self._export_ratio(window_prices, before)
-            export = {h: v * ratio for h, v in mean.items()}
+        # Export prices only come from the forecast attribute, which neither the recorder (too
+        # large) nor statistics keep: derive them from the import price (see export_relation).
         return PriceProvider(
             observed=hourly(mean), export_observed=hourly(export),
             fallback=self.prices.current, export_fallback=export_fixed,
+            export_from_import=window_prices.export_from_import,
         )
-
-    @staticmethod
-    def _export_ratio(prices: PriceProvider, window_start: datetime) -> float:
-        hour, imp_sum, exp_sum = window_start, 0.0, 0.0
-        while hour < dt_util.utcnow() - HOUR:
-            p = prices.price(hour, hour + HOUR)
-            if p is not None and p > 0:
-                imp_sum += p
-                exp_sum += prices.export_price(hour, hour + HOUR)
-            hour += HOUR
-        return exp_sum / imp_sum if imp_sum > 0 else 0.0
 
     async def _backfill_device(self, agg: Aggregator, dev: dict[str, Any], older: dict[str, Any] | None, before: datetime) -> None:
         if not older:
@@ -757,7 +756,7 @@ class EnergydashCoordinator:
         self.agg.clear_all()
         self.house = HouseTracker()
         if scope == "all":
-            self.config = {"devices": [], "archived": []}
+            self.config = {"devices": [], "archived": [], "calc_version": CALC_VERSION}
             self.trackers = {}
             await self.storage.async_save_config(self.config)
             async_dispatcher_send(self.hass, SIGNAL_DEVICES)
@@ -783,7 +782,7 @@ class EnergydashCoordinator:
         devices = [self._clean_device(d) for d in data.get("devices") or []]
         self.agg.clear_all()
         self.house = HouseTracker()
-        self.config = {"devices": [], "archived": []}
+        self.config = {"devices": [], "archived": [], "calc_version": CALC_VERSION}
         self.trackers = {}
         for dev in devices:
             dev.pop("id", None)

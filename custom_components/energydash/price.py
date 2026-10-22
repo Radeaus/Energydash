@@ -219,6 +219,31 @@ def parse_forecast(attributes: dict[str, Any], state_value: float | None, now: d
     return ParsedForecast(price_series, export_series, attr, scale)
 
 
+def export_relation(price: PriceSeries, export: PriceSeries) -> tuple[float, float] | None:
+    """Export price as a linear function of the import price, `a * price + b`, from the forecast.
+
+    The recorder does not keep large attributes (over 16 kB, such as Zonneplan's forecast), so
+    for history only the import price (the entity's state) is known. Suppliers derive both from
+    the same market price: all-in = (market + tax) x VAT, export = market. That is linear, so
+    a least-squares fit over the forecast gives the export price for any past import price.
+    """
+    pairs = []
+    for start, end, exp in zip(export.starts, export.ends, export.values):
+        imp = price.weighted(start, end)
+        if imp is not None:
+            pairs.append((imp, exp))
+    if len(pairs) < 4:
+        return None
+    n = len(pairs)
+    mx = sum(p for p, _ in pairs) / n
+    my = sum(e for _, e in pairs) / n
+    var = sum((p - mx) ** 2 for p, _ in pairs)
+    if var < 1e-8:
+        return (my / mx, 0.0) if abs(mx) > 1e-6 else None
+    a = sum((p - mx) * (e - my) for p, e in pairs) / var
+    return a, my - a * mx
+
+
 def is_low_tariff(t: datetime, tz: tzinfo) -> bool:
     """Dutch default: low tariff 23:00-07:00 on weekdays and all day in weekends."""
     local = t.astimezone(tz)
@@ -251,14 +276,20 @@ class PriceProvider:
         fixed: tuple[float, float, tzinfo] | None = None,
         observed: PriceSeries | None = None,
         export_observed: PriceSeries | None = None,
+        export_from_import: tuple[float, float] | None = None,
     ) -> None:
-        """`series` is a forecast (preferred); `observed` is built from the entity's past states."""
+        """`series` is a forecast (preferred); `observed` is built from the entity's past states.
+
+        `export_from_import` (a, b) derives the export price from the import price when no export
+        price is known for an interval (see export_relation).
+        """
         self.series = series or PriceSeries()
         self.export_series = export_series or PriceSeries()
         self.observed = observed or PriceSeries()
         self.export_observed = export_observed or PriceSeries()
         self.fallback = fallback
         self.export_fallback = export_fallback
+        self.export_from_import = export_from_import
         self.fixed = fixed
 
     def price(self, t0: datetime, t1: datetime) -> float | None:
@@ -272,6 +303,11 @@ class PriceProvider:
         value = _pick(self.export_series, self.export_observed, t0, t1)
         if value is None:
             value = self.export_fallback
+        if value is None and self.export_from_import is not None:
+            imp = self.price(t0, t1)
+            if imp is not None:
+                a, b = self.export_from_import
+                value = a * imp + b
         return value if value is not None else 0.0
 
 

@@ -73,6 +73,7 @@ const cardCss = css`
   .hbar > div { height: 100%; border-radius: 5px; }
   .hbar .ref { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ed-text2); }
   .prow { display: grid; grid-template-columns: minmax(110px, 30%) 1fr auto; gap: 12px; align-items: center; font-size: 14px; padding: 6px 0; }
+  .prow[data-tip]:hover, .prow[data-tip]:focus-visible { text-decoration: none; background: rgba(127, 127, 127, 0.06); border-radius: 6px; }
   .hours { display: flex; align-items: flex-end; gap: 2px; height: 140px; position: relative; border-bottom: 1px solid var(--ed-line); }
   .hours .h { flex: 1; position: relative; height: 100%; display: flex; align-items: flex-end; border: none; background: none; padding: 0; cursor: pointer; }
   .hours .k { width: 100%; background: var(--ed-pri); opacity: 0.55; border-radius: 3px 3px 0 0; }
@@ -282,10 +283,13 @@ export class EdDashboard extends LitElement {
         const p = r.n!.price_per_kwh ?? 0;
         const g = r.n!.grid_price_per_kwh ?? 0;
         const diff = g > 0 ? Math.round((1 - p / g) * 100) : 0;
-        return html`<div class="prow">
+        const tip = t("d.tip_per_kwh", { cost: eur(r.n!.cost), kwh: num(r.n!.kwh, 1), price: eur(p, 3), grid: eur(g, 3),
+          diff: diff > 1 ? t("d.vs_grid_below", { p: diff }) : diff < -1 ? t("d.vs_grid_above", { p: -diff }) : t("d.vs_grid_same") });
+        // The whole row explains itself: bar, marker and number.
+        return html`<div class="prow" tabindex="0" data-tip=${tip}>
           <span class="row" style="gap:8px"><span class="swatch" style="background:${r.color}"></span>${r.name}</span>
           <div class="hbar"><div style="width:${Math.max((p / max) * 100, 0).toFixed(1)}%;background:${r.color}"></div><span class="ref" style="left:${((g / max) * 100).toFixed(1)}%"></span></div>
-          ${tipped(html`<b>${eur(p, 3)}</b>`, t("d.tip_per_kwh", { cost: eur(r.n!.cost), kwh: num(r.n!.kwh, 1), grid: eur(g, 3), diff: diff > 1 ? t("d.vs_grid_below", { p: diff }) : diff < -1 ? t("d.vs_grid_above", { p: -diff }) : t("d.vs_grid_same") }))}
+          <b>${eur(p, 3)}</b>
         </div>`;
       })}
     </div>`;

@@ -10,7 +10,7 @@ import pytest
 from edcore.aggregate import Aggregator
 from edcore.const import SOLAR_MODE_EXPORT, SOLAR_MODE_FREE, SOLAR_MODE_GRID, HOUSE_KEY
 from edcore.engine import build_step, cost_of, counter_delta, split_net
-from edcore.price import PriceProvider, PriceSeries, parse_forecast
+from edcore.price import PriceProvider, PriceSeries, export_relation, parse_forecast
 from edcore.tracker import DeviceTracker, HouseTracker
 
 UTC = timezone.utc
@@ -246,3 +246,20 @@ def test_rest_of_house_and_summary():
     summ = agg.summary([{"id": "was", "name": "Wasmachine"}], datetime(2026, 10, 20).date(), 1, SOLAR_MODE_FREE)
     assert summ["totals"]["_rest"]["kwh"] == pytest.approx(1.0)
     assert summ["totals"]["was"]["cost"] == pytest.approx(0.15)
+
+
+def test_export_price_from_import_price():
+    """Zonneplan-like: all-in = (market + 0.13) * 1.21, export = market. History only has the all-in state."""
+    start = t(0)
+    market = [0.05 + 0.02 * ((i * 5) % 7) - 0.03 * (i % 3) for i in range(48)]
+    allin = PriceSeries.from_intervals([(start + timedelta(minutes=15 * i), start + timedelta(minutes=15 * (i + 1)), (m + 0.13) * 1.21) for i, m in enumerate(market)])
+    export = PriceSeries.from_intervals([(start + timedelta(minutes=15 * i), start + timedelta(minutes=15 * (i + 1)), m) for i, m in enumerate(market)])
+    rel = export_relation(allin, export)
+    assert rel == (pytest.approx(1 / 1.21), pytest.approx(-0.13))
+    # A day earlier: only the observed all-in price, no forecast attribute in the recorder.
+    past = PriceSeries.from_intervals([(t(10, day=19), t(11, day=19), (0.08 + 0.13) * 1.21)])
+    prices = PriceProvider(observed=past, export_from_import=rel)
+    assert prices.export_price(t(10, day=19), t(11, day=19)) == pytest.approx(0.08)
+    # A fixed export price set by the user wins over the derived one.
+    assert PriceProvider(observed=past, export_fallback=0.07, export_from_import=rel).export_price(t(10, day=19), t(11, day=19)) == pytest.approx(0.07)
+    assert export_relation(allin, PriceSeries()) is None
