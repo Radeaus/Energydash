@@ -283,7 +283,7 @@ class EnergydashCoordinator:
         fixed = _float(self.settings.get(CONF_EXPORT_PRICE_FIXED))
         if mode == EXPORT_MODE_SAME:
             return {"export_same": True}
-        # 'auto' from before 1.2.5 kept the fixed amount as a fallback.
+        # 'auto' from older settings kept the fixed amount as a fallback.
         return {"export_fallback": fixed if mode in (EXPORT_MODE_FIXED, EXPORT_MODE_AUTO) else None}
 
     def _fixed_tariff(self) -> tuple[float, float, Any]:

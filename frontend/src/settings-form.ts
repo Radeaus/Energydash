@@ -30,7 +30,7 @@ export function withAnswers(s: Settings): Settings {
     if (out.export_price_entity && out.contract === "dynamic") out.export_price_mode = "entity";
     else if (out.contract === "dynamic") out.export_price_mode = "auto";
   }
-  // With a fixed price the export price is a fixed amount; before 1.2.5 an empty amount meant 0.
+  // With a fixed price the export price is a fixed amount; in older settings an empty amount meant 0.
   if (out.contract === "fixed") {
     out.export_price_mode = "fixed";
     if (s.contract === "fixed" && out.export_price_fixed == null) out.export_price_fixed = 0;

@@ -81,9 +81,9 @@ In 1.0 heet `energydash/quality` `energydash/analyze`, en `sessions/list`/`get` 
 | `contract` | `dynamic` (prijs uit een entiteit), `fixed` (vaste prijs) of `null` (nog niet gekozen) |
 | `price_entity`, `price_markup` | prijs-entiteit en opslag per kWh (0 = de entiteit is de hele prijs) |
 | `price_normal`, `price_low` | vaste prijs; `price_low` leeg = één prijs |
-| `import_entity`, `export_entity`, `solar_entity` | lijst met entity-id's (ook één string, van vóór 1.2.5); tellers worden opgeteld |
+| `import_entity`, `export_entity`, `solar_entity` | lijst met entity-id's (ook één string, uit oudere instellingen); tellers worden opgeteld |
 | `solar_mode` | `export`, `free` of `grid` |
-| `export_price_mode` | `same`, `auto`, `entity` of `fixed`; leeg = gedrag van vóór 1.2.5 |
+| `export_price_mode` | `same`, `auto`, `entity` of `fixed`; leeg = oud gedrag (zie 02-rekenmethode) |
 | `export_price_entity`, `export_price_fixed` | bij `entity` en `fixed` |
 
 ## Gegevens

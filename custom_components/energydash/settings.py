@@ -44,7 +44,7 @@ def entity_ids(value: Any) -> list[str]:
 
 
 def export_mode(settings: dict[str, Any]) -> str:
-    """How the export price is found. Settings from before 1.2.5 have no mode: same behaviour as then."""
+    """How the export price is found. Older settings have no mode: they keep the behaviour from before the mode existed."""
     mode = settings.get(CONF_EXPORT_PRICE_MODE)
     if mode in EXPORT_MODES:
         if settings.get(CONF_CONTRACT) == CONTRACT_FIXED and mode in (EXPORT_MODE_AUTO, EXPORT_MODE_ENTITY):
