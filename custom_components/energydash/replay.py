@@ -1,4 +1,4 @@
-"""Replay recorder history through the trackers ("Opnieuw berekenen"). Pure module.
+"""Replay recorder history through the trackers ("Recalculate"). Pure module.
 
 States are duck-typed (`.state`, `.last_changed`), so tests can use simple stand-ins.
 """
@@ -102,13 +102,36 @@ def text_series(states: list[Any]) -> list[tuple[datetime, str]]:
     return [(t, str(v)) for t, v in map(point, states)]
 
 
-def self_use_series(solar: list[tuple[datetime, float]], export: list[tuple[datetime, float]]) -> list[tuple[datetime, float]]:
-    """Cumulative solar self-use: production minus export (export 0 when there is no export counter)."""
-    if not solar:
+def self_use_series(
+    solar: list[tuple[datetime, float]],
+    export: list[tuple[datetime, float]],
+    charge: list[tuple[datetime, float]] | None = None,
+    discharge: list[tuple[datetime, float]] | None = None,
+) -> list[tuple[datetime, float]]:
+    """Cumulative own power used in the house: solar production minus export (export 0 when there
+    is no export counter), plus battery discharge minus battery charge when a battery is known.
+
+    The value can go down (a battery charging from the grid); only differences are used.
+    """
+    battery = bool(charge) and bool(discharge)
+    if not solar and not battery:
         return []
     sol, exp = StepLookup(solar), StepLookup(export)
-    times = sorted({t for t, _ in solar} | {t for t, _ in export if t >= solar[0][0]})
-    return [(t, sol.at(t) - (exp.at(t) or 0.0)) for t in times]  # type: ignore[operator]
+    chg, dis = StepLookup(charge or []), StepLookup(discharge or [])
+    firsts = ([solar[0][0]] if solar else []) + ([charge[0][0], discharge[0][0]] if battery else [])  # type: ignore[index]
+    begin = max(firsts)
+    times = sorted(
+        {t for s in (solar, export, charge or [], discharge or []) for t, _ in s if t >= begin} | {begin}
+    )
+    out = []
+    for t in times:
+        value = 0.0
+        if solar:
+            value += sol.at(t) - (exp.at(t) or 0.0)  # type: ignore[operator]
+        if battery:
+            value += dis.at(t) - chg.at(t)  # type: ignore[operator]
+        out.append((t, value))
+    return out
 
 
 def replay_device(dev, states, imp_series, prices, start, end, tz, energy_unit, power_unit, solar_series=None):
@@ -154,15 +177,17 @@ def replay_device(dev, states, imp_series, prices, start, end, tz, energy_unit, 
 
 
 def replay_house(series, prices, start, end, tz):
+    """`series`: import, export, solar, and optionally battery charge and discharge."""
     house = HouseTracker()
     agg = Aggregator()
+    series = list(series) + [[]] * (5 - len(series))
     lookups = [StepLookup(s) for s in series]
     has = [bool(s) for s in series]
     t = start.replace(second=0, microsecond=0)
     while t < end:
         t += timedelta(seconds=HOUSE_TICK_S)
         vals = [lk.at(t) if h else None for lk, h in zip(lookups, has)]
-        step = house.tick(t, vals[0], vals[1], vals[2], prices)
+        step = house.tick(t, vals[0], vals[1], vals[2], prices, vals[3], vals[4])
         if step is not None:
             agg.add_step(HOUSE_KEY, step, tz, log=False)
             agg.add_export(step.t0, step.t1, house.exported, prices, tz)

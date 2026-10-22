@@ -1,4 +1,4 @@
-// The four tabs: Dashboard, Sessies, Sluipverbruik, Apparaten (docs/04 §4).
+// The four tabs: Dashboard, Sessions, Baseload, Devices (docs/04 §4).
 
 import { LitElement, css, html, nothing, svg, type SVGTemplateResult, type TemplateResult } from "lit";
 import { api, meterIds, sessionCost, type Baseload, type ConfigResult, type Device, type Hass, type Period, type Session, type SolarMode, type Summary } from "./api";
@@ -150,8 +150,7 @@ const cardCss = css`
   .chart .seg { flex: none; width: 70%; max-width: 32px; }
   .chart-labels { display: flex; gap: 2px; margin-left: 48px; font-size: 11px; color: var(--ed-text2); margin-top: 6px; }
   .chart-labels span { flex: 1; min-width: 3px; text-align: center; overflow: visible; white-space: nowrap; }
-  .flow-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px 40px; align-items: center; }
-  .flow { position: relative; width: 100%; max-width: 380px; aspect-ratio: 320 / 256; margin: 0 auto; }
+  .flow { position: relative; width: 100%; max-width: 360px; aspect-ratio: 320 / 256; margin: 0 auto 8px; }
   .flow svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
   .flow .node { position: absolute; width: 26.25%; aspect-ratio: 1; transform: translate(-50%, -50%); border: 2px solid; border-radius: 50%;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 12px; line-height: 1.25; text-align: center; white-space: nowrap; }
@@ -159,7 +158,7 @@ const cardCss = css`
   .flow .node ha-icon { --mdc-icon-size: 24px; margin-bottom: 2px; }
   .flow .node b { font-size: 14px; font-weight: 500; }
   .flow .node .name { position: absolute; top: calc(100% + 6px); color: var(--ed-text2); font-size: 13px; }
-  .stats { display: grid; gap: 20px; align-content: center; }
+  .stats { display: grid; gap: 20px; flex: 1; align-content: center; }
   .stats .head { font-weight: 500; font-size: 14px; }
   .stats .eq { font-size: 13px; color: var(--ed-text2); margin: 2px 0 10px; font-variant-numeric: tabular-nums; }
   .balance { height: 10px; border-radius: 5px; background: var(--ed-line); display: flex; overflow: hidden; }
@@ -317,8 +316,8 @@ export class EdDashboard extends LitElement {
         </div>
         ${hasSolar ? this._solar(d, zonKwh, kwh) : nothing}
       </div>
-      ${d.has_house ? this._flow(d, hasSolar) : nothing}
       ${this._perDay(d, series)}
+      ${d.has_house ? this._flow(d, hasSolar) : nothing}
       ${hasSolar ? this._solarDays(d) : nothing}
       <div class="two">${this._perKwh(d, series)}${this._hours(d)}</div>
     </div>`;
@@ -391,9 +390,10 @@ export class EdDashboard extends LitElement {
         t("d.tip_share", { zon: num(zon, 1), kwh: num(kwh, 1), grid: num(imp, 1) })));
     }
     const scale = Math.max(imp, out, 0.001);
-    return html`<div class="card">
-      <h3>${t("d.flow")}</h3>
-      <div class="flow-grid">
+    const hasStats = hasExport || gauges.length > 0;
+    return html`<div class="two">
+      <div class="card">
+        <h3>${t("d.flow")}</h3>
         <div class="flow" role="img" aria-label="${t("d.flow_grid")}: ${t("d.grid")} ${kt(imp)}${hasExport ? `, ${t("d.exported")} ${kt(out)}` : ""}. ${hasSolar ? `${t("d.solar")}: ${kt(produced)}. ` : ""}${t("d.flow_home")}: ${kt(kwh)}">
           <svg viewBox="0 0 320 256" aria-hidden="true">
             ${hasSolar ? line(SOLAR_HOME, zon, c.zon) : nothing}
@@ -415,6 +415,9 @@ export class EdDashboard extends LitElement {
             <ha-icon icon="mdi:home"></ha-icon><span>${k(kwh)}</span><span class="name">${t("d.flow_home")}</span>
           </div>
         </div>
+      </div>
+      ${hasStats ? html`<div class="card" style="display:flex;flex-direction:column">
+        <h3>${t("d.energy_balance")}</h3>
         <div class="stats">
           ${hasExport
             ? html`<div tabindex="0" data-tip=${t("d.tip_balance", { imp: num(imp, 2), exp: num(out, 2), net: num(net, 2) })}>
@@ -428,7 +431,7 @@ export class EdDashboard extends LitElement {
             : nothing}
           ${gauges.length ? html`<div class="gauges">${gauges}</div>` : nothing}
         </div>
-      </div>
+      </div>` : nothing}
     </div>`;
   }
 

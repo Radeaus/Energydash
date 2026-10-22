@@ -116,8 +116,8 @@ class DeviceCostSensor(_Base):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         n = self.coord.device_numbers(self.dev_id)[self.period]
-        return {"kwh": n["kwh"], "zon_kwh": n["zon"], "net_kwh": n["net"], "net_cost": n["net_cost"],
-                "zon_cost": n["zon_cost"], "cost_all_grid": n["all_net"], "price_per_kwh": n["price_per_kwh"]}
+        return {"kwh": n["kwh"], "solar_kwh": n["zon"], "grid_kwh": n["net"], "grid_cost": n["net_cost"],
+                "solar_cost": n["zon_cost"], "cost_all_grid": n["all_net"], "price_per_kwh": n["price_per_kwh"]}
 
 
 class LastSessionSensor(_Base):
@@ -143,8 +143,8 @@ class LastSessionSensor(_Base):
         if not sess:
             return {}
         f = sess["fields"]
-        return {"start": sess["start"], "end": sess["end"], "kwh": round(f[0], 3), "zon_kwh": round(f[1], 3),
-                "net_kwh": round(f[0] - f[1], 3), "net_cost": round(f[2], 4), "cost_all_grid": round(f[3], 4)}
+        return {"start": sess["start"], "end": sess["end"], "kwh": round(f[0], 3), "solar_kwh": round(f[1], 3),
+                "grid_kwh": round(f[0] - f[1], 3), "grid_cost": round(f[2], 4), "cost_all_grid": round(f[3], 4)}
 
 
 class HouseCostSensor(_Base):
@@ -175,7 +175,7 @@ class HouseCostSensor(_Base):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         n = self._numbers()
-        return {"kwh": n.get("kwh"), "zon_kwh": n.get("zon"), "price_per_kwh": n.get("price_per_kwh")}
+        return {"kwh": n.get("kwh"), "solar_kwh": n.get("zon"), "price_per_kwh": n.get("price_per_kwh")}
 
 
 class BaseloadSensor(_Base):

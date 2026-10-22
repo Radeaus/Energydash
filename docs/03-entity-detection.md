@@ -7,7 +7,7 @@ The integration suggests devices and sources; you decide. Each suggestion says w
 - `device_class` (state attributes or entity registry): `energy` is a kWh counter, `power` is power.
 - `unit_of_measurement` (state attributes): kWh, Wh, or MWh for energy; W or kW for power.
 - `state_class` (state attributes): `total_increasing` or `total` is a usable counter. Missing means a forecast or a derived value.
-- Energy dashboard preferences (`energy/get_prefs`): `energy_sources` (grid, solar, gas) and `device_consumption` with `stat_consumption` and optionally `stat_rate` (the matching power sensor).
+- Energy dashboard preferences (`energy/get_prefs`): `energy_sources` (grid, solar, battery, gas; for a battery, `stat_energy_to` is the energy into it and `stat_energy_from` the energy out of it) and `device_consumption` with `stat_consumption` and optionally `stat_rate` (the matching power sensor).
 - Device and area (device and area registry): link the counter and the power sensor of the same plug, and show the name and area.
 - History (recorder): refresh rate, interruptions, and pattern (sessions or continuous).
 
@@ -20,7 +20,7 @@ The integration suggests devices and sources; you decide. Each suggestion says w
 ## Filters (not suggested)
 
 - Counters listed as grid (`stat_energy_from` or `stat_energy_to`) or solar in the energy sources, such as the P1 meter or the inverter.
-- Periodic counters (today, this week, this month, this year). Recognized by resets at fixed moments in the history, with name parts like `today`, `vandaag`, or `this_month` as a supporting signal.
+- Periodic counters (today, this week, this month, this year). Recognized by resets at fixed moments in the history, with name parts like `today`, `vandaag`, `heute`, `aujourd`, or `this_month` as a supporting signal. Name parts are compared without accents and umlauts.
 - Sensors without `state_class`, such as forecasts and calculated values.
 - Duplicates of the same physical measurement, such as HomeKit bridges or cloud copies of local data: the same value and pattern as a counter that is already chosen.
 - Your own helper sensors derived from other counters (integration or template helpers), unless you choose them explicitly.
@@ -29,7 +29,8 @@ The integration suggests devices and sources; you decide. Each suggestion says w
 
 - Continuous: never below a threshold (for example, a server never below 30 W), or varying without clear on/off cycles (air conditioner).
 - Sessions: repeatedly on, then standby, with clear blocks (washing machine 5 times in 7 days, 80 to 95 minutes).
-- Charger: the name or device contains "laadpaal", "charger", "wallbox", or "EVSE", or it ran above 7 kW for more than an hour several times.
+- Charger: the name or device contains "laadpaal", "charger", "wallbox", "EVSE", "Ladestation", "borne", or a charger brand (Easee, Zaptec, Alfen, Zappi, go-e, Ohme), or it ran above 7 kW for more than an hour several times.
+- Names are recognized in English, Dutch, German, French, Spanish, Italian, Swedish, Danish, and Norwegian (`discovery_rules.py`).
 
 ## Quick start (`onboarding.py`, `energydash/suggest`)
 

@@ -14,6 +14,10 @@ The tests cover the calculation core, the back-calculation, and the detection. T
 
 The bundled panel (`energydash-panel.js`) is part of the repository, so HACS can install it directly. Rebuild it after every change in `frontend/src`. GitHub Actions checks hassfest, HACS, the tests, and whether the bundle is up to date.
 
+## Translations
+
+The integration texts are in `custom_components/energydash/translations/`. The panel texts are in `frontend/src/i18n.ts` (English and Dutch) and `frontend/src/locales/` (German, Spanish, and French). To add a language, add `translations/<code>.json`, a `locales/<code>.ts`, and the code in `DICTS` in `i18n.ts` and in `LANGUAGES` in `tests/test_translations.py`. Custom integrations don't use `strings.json` and can't use `[%key:...%]` references, so write every text out. `pytest` checks that all languages have the same keys and placeholders. See [UX and design](docs/04-ux-and-design.md#translations) for the rules.
+
 ## Documentation
 
 - [Concept](docs/01-concept.md): what it is, who it is for, and what already exists.

@@ -31,11 +31,19 @@ def sum_hourly(parts: list[Hourly]) -> Hourly:
     return out
 
 
-def self_use_hourly(solar: Hourly, export: Hourly | None) -> Hourly:
-    """Solar used in the house per hour: production minus export (no export counter: production)."""
-    if export is None:
-        return dict(solar)
-    return {h: v - export[h] for h, v in solar.items() if h in export}
+def self_use_hourly(
+    solar: Hourly | None, export: Hourly | None, charge: Hourly | None = None, discharge: Hourly | None = None
+) -> Hourly:
+    """Own power used in the house per hour: production minus export (no export counter: production),
+    plus battery discharge minus battery charge. With solar, only hours with solar data count."""
+    out: Hourly = {}
+    if solar:
+        out = dict(solar) if export is None else {h: v - export[h] for h, v in solar.items() if h in export}
+    if charge is not None and discharge is not None:
+        hours = set(out) if solar else set(charge) | set(discharge)
+        for h in hours:
+            out[h] = out.get(h, 0.0) + discharge.get(h, 0.0) - charge.get(h, 0.0)
+    return out
 
 
 def prices_from_cost(cost: Hourly, imp: Hourly) -> Hourly:
@@ -88,7 +96,8 @@ def backfill_house(
         if hour + HOUR > before:
             continue
         d_imp = max(imp[hour], 0.0)
-        house = d_imp + max(solar_use.get(hour, 0.0), 0.0) if solar_use is not None else d_imp
+        # Own power can be negative with a battery that charges from the grid.
+        house = max(d_imp + solar_use.get(hour, 0.0), 0.0) if solar_use is not None else d_imp
         if house <= 0:
             continue
         agg.add_step(HOUSE_KEY, build_step(hour, hour + HOUR, house, d_imp, prices), tz, log=False)

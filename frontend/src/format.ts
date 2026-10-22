@@ -1,11 +1,42 @@
 // Formatting and colours. Colours follow docs/04 (validated for colour blindness and contrast).
 
-let LOCALE = "nl-NL";
+let LOCALE = "en";
 let CURRENCY = "EUR";
 
 export function setLocale(lang: string, currency: string) {
   LOCALE = lang.startsWith("nl") ? "nl-NL" : lang;
   CURRENCY = currency || "EUR";
+}
+
+/** The currency symbol in the user's language: "€", "kr", "£", "$". */
+export function currencySymbol(): string {
+  try {
+    const part = new Intl.NumberFormat(LOCALE, { style: "currency", currency: CURRENCY }).formatToParts(1).find((p) => p.type === "currency");
+    return part?.value ?? CURRENCY;
+  } catch {
+    return CURRENCY;
+  }
+}
+
+// Same rules as price.unit_factor in the backend: ct/kWh and öre/kWh give 0.01, €/MWh gives 0.001.
+const SUBUNITS = new Set(["ct", "cent", "cents", "c", "¢", "p", "pence", "öre", "ore", "øre", "gr", "grosz", "rp", "kop", "eurocent"]);
+const SUBUNIT_EXACT = new Set(["GBp", "c€", "€c", "ct€", "€ct"]);
+
+/** Factor that turns a price in `unit` into a price per kWh in the main currency unit. */
+export function priceFactor(unit: unknown): number {
+  if (typeof unit !== "string" || !unit.includes("/")) return 1;
+  const clean = unit.replace(/\s/g, "");
+  const cut = clean.lastIndexOf("/");
+  const numerator = clean.slice(0, cut);
+  const den = clean.slice(cut + 1).toLowerCase();
+  let factor: number;
+  if (den === "kwh") factor = 1;
+  else if (den === "mwh") factor = 0.001;
+  else if (den === "wh") factor = 1000;
+  else return 1;
+  const low = numerator.toLowerCase();
+  if (SUBUNIT_EXACT.has(numerator) || SUBUNITS.has(low) || low.includes("cent")) factor /= 100;
+  return factor;
 }
 
 export function eur(v: number | null | undefined, digits = 2): string {

@@ -48,3 +48,21 @@ Tesla: 49,9 kWh geladen, accu 80%
 ## Points of attention
 - Variables are in consecutive `variables` steps. Home Assistant stores the keys of a single block alphabetically, so a key that reads a name defined later would be empty.
 - The first real test is the next charging session: compare the push notification with the Zonneplan app.
+
+## Moving the report to Energydash
+Since version 1.0.6, Energydash fires `energydash_session_ended` when a session ends, with the energy, solar, grid, and cost of the session. The report can trigger on that event instead of keeping its own helpers. Only the Zonneplan comparison (`sessiekosten`) and the battery level still come from other entities.
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: energydash_session_ended
+    event_data:
+      device_id: laadpaal
+actions:
+  - action: notify.mobile_app_telefoon
+    data:
+      message: >-
+        {{ trigger.event.data.kwh }} kWh geladen,
+        zon {{ trigger.event.data.solar_kwh }} kWh,
+        € {{ '%.2f' | format(trigger.event.data.cost) }}
+```

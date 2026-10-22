@@ -23,10 +23,19 @@
 - Recalculation on the recorder history.
 - Repairs notifications.
 
+### Ready for other countries (1.0.7)
+- Price units (cents, öre, pence, per MWh), VAT next to the markup, low tariff hours, and a home battery.
+- Forecast prices from more integrations, and through actions for Nord Pool, Tibber, EnergyZero, and easyEnergy in Home Assistant itself.
+- Repair for a single net meter, "smart meter" instead of "P1" in texts, the Home Assistant currency in labels, and device names in more languages.
+
 ### Later
 - Read WashData events, dishwasher and air fryer profiles.
 - Comparison with the supplier where it reports session cost.
-- Publish in the HACS default catalog.
+- Publish in the HACS default catalog. Before that, the brand icon in the home-assistant/brands repository.
+- More languages, if users ask for them. German, Spanish, and French were added in 1.0.7.
+- Fixed costs per day or month and a capacity tariff (Belgium), if users ask for them.
+- Three or more fixed tariff periods; for now a template sensor with **Price from an entity** works.
+- Octopus Energy: its rates are on event entities, not on the price sensor.
 
 ## Decisions made
 | Decision | Why |
@@ -41,7 +50,7 @@
 ## Open questions
 - ~~GitHub repo: name and account~~ → https://github.com/Radeaus/Energydash
 - Test environment: a separate test Home Assistant on Proxmox, or directly on the production Home Assistant?
-- Final integration name/domain: `energydash` (Dutch) or an English name for wider publication?
+- ~~Final integration name/domain~~ → `energydash` stays: it is a name, not a Dutch word.
 - Export compensation: from the same price entity (bare price) or choose a separate entity?
 - Include gas (heating is now electric, hot water is still gas)?
 - Should "Baseload" count continuous devices (server) or show them separately? (prototype: explained separately)

@@ -5,8 +5,8 @@ import { api, type Candidate, type ConfigResult, type Device, type Hass, type Se
 import { define } from "./components";
 import "./dialogs";
 import "./onboarding";
-import { download, setLocale } from "./format";
-import { setLanguage, t } from "./i18n";
+import { currencySymbol, download, setLocale } from "./format";
+import { setCurrencySymbol, setLanguage, t } from "./i18n";
 import { shared } from "./styles";
 import { renderSessionDetail, type Ctx } from "./views";
 
@@ -81,7 +81,7 @@ class EnergydashPanel extends LitElement {
   updated() {
     if (this.hass && !this._started) {
       this._started = true;
-      const lang = this.hass.locale?.language ?? this.hass.language ?? "nl";
+      const lang = this.hass.locale?.language ?? this.hass.language ?? "en";
       setLanguage(lang);
       this._load();
       this._unsub = this.hass.connection.subscribeMessage(() => this._load(), { type: "energydash/subscribe" });
@@ -98,7 +98,8 @@ class EnergydashPanel extends LitElement {
   private async _load() {
     try {
       const cfg = await api.config(this.hass);
-      setLocale(this.hass.locale?.language ?? this.hass.language ?? "nl", cfg.currency);
+      setLocale(this.hass.locale?.language ?? this.hass.language ?? "en", cfg.currency);
+      setCurrencySymbol(currencySymbol());
       this._config = cfg;
       this._tick += 1;
       this._error = "";

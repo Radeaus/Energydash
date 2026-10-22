@@ -351,10 +351,10 @@ export function anySensorFilter(s: HassState): EntityOption | null {
   return { entity_id: s.entity_id, name: String(s.attributes.friendly_name ?? s.entity_id), chip: s.attributes.unit_of_measurement, level: "neutral" };
 }
 
-/** Sensors with a price per kWh (€/kWh, EUR/kWh, ct/kWh): offered first when picking a price entity. */
+/** Sensors with a price per kWh or MWh (EUR/kWh, ct/kWh, öre/kWh, €/MWh): offered first when picking a price entity. */
 export function priceFilter(s: HassState): EntityOption | null {
   const unit = String(s.attributes.unit_of_measurement ?? "").toLowerCase().replace(/\s/g, "");
-  if (!s.entity_id.startsWith("sensor.") || !unit.includes("/kwh")) return null;
+  if (!s.entity_id.startsWith("sensor.") || !(unit.endsWith("/kwh") || unit.endsWith("/mwh"))) return null;
   return { entity_id: s.entity_id, name: String(s.attributes.friendly_name ?? s.entity_id), chip: s.attributes.unit_of_measurement, level: "neutral" };
 }
 

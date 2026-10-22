@@ -60,9 +60,15 @@ export interface Settings {
   import_entity: Meter; // one counter or several (normal and low tariff), added up
   export_entity?: Meter;
   solar_entity?: Meter;
+  battery_charge_entity?: Meter; // energy into the home battery
+  battery_discharge_entity?: Meter; // energy out of the home battery
   solar_mode: SolarMode | null;
   price_entity?: string | null;
-  price_markup?: number | null; // €/kWh on top of the entity's price; 0 = the entity is the full price
+  price_markup?: number | null; // per kWh on top of the entity's price; 0 = the entity is the full price
+  price_vat?: number | null; // percentage over the entity's price plus the markup
+  low_start?: string | null; // "23:00": start of the low tariff (fixed price, normal and low)
+  low_end?: string | null; // "07:00"
+  low_weekend?: boolean | null; // low tariff all weekend
   export_price_mode?: ExportMode | null;
   export_price_entity?: string | null;
   export_price_fixed?: number | null;
@@ -99,6 +105,9 @@ export interface ConfigResult {
     busy: Record<string, string>;
     price_attribute: string | null;
     price_scale: number;
+    price_from_action?: boolean; // forecast fetched through an action (Nord Pool, Tibber, EnergyZero, easyEnergy)
+    price_unit?: string | null;
+    price_factor?: number; // unit conversion to the main currency per kWh (ct/kWh: 0.01)
     price_current: number | null;
     price_export_forecast?: boolean;
     export_price_now?: number | null;

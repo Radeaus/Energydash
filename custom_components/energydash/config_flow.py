@@ -1,4 +1,4 @@
-"""Config flow (installation) and reconfigure ("Opnieuw instellen").
+"""Config flow (installation) and reconfigure ("Set up again").
 
 Prices and meters are chosen in the panel's quick start and settings (docs/04), not here: the
 installation only takes the Energy dashboard's meters as a starting point.
@@ -14,6 +14,8 @@ from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CONTRACT,
     CONF_EXPORT_ENTITY,
     CONF_EXPORT_PRICE_ENTITY,
@@ -50,6 +52,8 @@ class EnergydashConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_IMPORT_ENTITY: found["import"],
             CONF_EXPORT_ENTITY: found["export"],
             CONF_SOLAR_ENTITY: found["solar"],
+            CONF_BATTERY_CHARGE_ENTITY: found["battery_charge"],
+            CONF_BATTERY_DISCHARGE_ENTITY: found["battery_discharge"],
             CONF_SOLAR_MODE: None,
             CONF_PRICE_ENTITY: found["price_entity"],
             CONF_PRICE_MARKUP: None,

@@ -1,0 +1,203 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Energydash",
+        "description": "Energydash se añade a la barra lateral. Allí eliges tu precio de la electricidad y tus contadores, y añades tus dispositivos."
+      },
+      "reconfigure": {
+        "title": "Volver a configurar",
+        "description": "Los precios y contadores están en el panel de Energydash, en Ajustes. Aquí puedes borrar los datos calculados o empezar completamente de cero.",
+        "data": {
+          "reset": "Borrar datos"
+        },
+        "data_description": {
+          "reset": "Los dispositivos y ajustes de precio se conservan, salvo que elijas empezar de cero. Después todo se recalcula con el historial."
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Energydash ya está configurado.",
+      "reconfigure_successful": "Guardado."
+    },
+    "create_entry": {
+      "default": "Energydash está configurado. Ábrelo en la barra lateral para elegir tu precio de la electricidad."
+    }
+  },
+  "selector": {
+    "reset": {
+      "options": {
+        "none": "Conservar todo",
+        "data": "Borrar datos calculados, conservar dispositivos",
+        "all": "Empezar de cero: eliminar dispositivos y datos"
+      }
+    },
+    "reset_scope": {
+      "options": {
+        "data": "Solo datos calculados",
+        "all": "Dispositivos y datos"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cost_today": {
+        "name": "Coste hoy",
+        "state_attributes": {
+          "kwh": {
+            "name": "Energía"
+          },
+          "solar_kwh": {
+            "name": "Energía solar"
+          },
+          "grid_kwh": {
+            "name": "Energía de la red"
+          },
+          "grid_cost": {
+            "name": "Coste de red"
+          },
+          "solar_cost": {
+            "name": "Coste solar"
+          },
+          "cost_all_grid": {
+            "name": "Coste sin energía solar"
+          },
+          "price_per_kwh": {
+            "name": "Precio por kWh"
+          }
+        }
+      },
+      "cost_month": {
+        "name": "Coste este mes",
+        "state_attributes": {
+          "kwh": {
+            "name": "Energía"
+          },
+          "solar_kwh": {
+            "name": "Energía solar"
+          },
+          "grid_kwh": {
+            "name": "Energía de la red"
+          },
+          "grid_cost": {
+            "name": "Coste de red"
+          },
+          "solar_cost": {
+            "name": "Coste solar"
+          },
+          "cost_all_grid": {
+            "name": "Coste sin energía solar"
+          },
+          "price_per_kwh": {
+            "name": "Precio por kWh"
+          }
+        }
+      },
+      "last_session": {
+        "name": "Última sesión",
+        "state_attributes": {
+          "start": {
+            "name": "Inicio"
+          },
+          "end": {
+            "name": "Fin"
+          },
+          "kwh": {
+            "name": "Energía"
+          },
+          "solar_kwh": {
+            "name": "Energía solar"
+          },
+          "grid_kwh": {
+            "name": "Energía de la red"
+          },
+          "grid_cost": {
+            "name": "Coste de red"
+          },
+          "cost_all_grid": {
+            "name": "Coste sin energía solar"
+          }
+        }
+      },
+      "house_cost_today": {
+        "name": "Coste de toda la casa hoy",
+        "state_attributes": {
+          "kwh": {
+            "name": "Energía"
+          },
+          "solar_kwh": {
+            "name": "Energía solar"
+          },
+          "price_per_kwh": {
+            "name": "Precio por kWh"
+          }
+        }
+      },
+      "rest_cost_today": {
+        "name": "Coste del resto de la casa hoy",
+        "state_attributes": {
+          "kwh": {
+            "name": "Energía"
+          },
+          "solar_kwh": {
+            "name": "Energía solar"
+          },
+          "price_per_kwh": {
+            "name": "Precio por kWh"
+          }
+        }
+      },
+      "baseload": {
+        "name": "Consumo base",
+        "state_attributes": {
+          "cost_month": {
+            "name": "Coste por mes"
+          },
+          "cost_year": {
+            "name": "Coste por año"
+          },
+          "unexplained_w": {
+            "name": "Sin explicar"
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "missing_entity": {
+      "title": "Energydash no encuentra {entity_id}",
+      "description": "La entidad {entity_id} ya no existe. Elige otra fuente en Energydash o restaura la entidad."
+    },
+    "net_meter": {
+      "title": "Tu contador de importación también cuenta hacia atrás",
+      "description": "El contador {entity_id} bajó varias veces en los últimos 2 días. Esto ocurre con un único contador neto que descuenta mientras viertes a la red. Energydash interpreta una bajada como un contador nuevo, así que los costes salen demasiado altos. En Energydash, en Ajustes, elige contadores separados para la importación de la red y el vertido a la red. La mayoría de las integraciones de contadores inteligentes ofrecen ambos."
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "Energydash no está configurado."
+    }
+  },
+  "services": {
+    "recalculate": {
+      "name": "Recalcular",
+      "description": "Sustituye los resultados calculados por un recálculo con el historial del registrador (normalmente 10 días) y las estadísticas a largo plazo anteriores.",
+      "fields": {
+        "device_id": {
+          "name": "Dispositivo",
+          "description": "ID de un dispositivo de Energydash. Déjalo vacío para todos los dispositivos y la casa."
+        }
+      }
+    },
+    "reset": {
+      "name": "Restablecer",
+      "description": "Borra los datos calculados o elimina también todos los dispositivos.",
+      "fields": {
+        "scope": {
+          "name": "Qué borrar",
+          "description": "Solo los datos calculados o también los dispositivos."
+        }
+      }
+    }
+  }
+}

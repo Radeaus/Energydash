@@ -1,0 +1,203 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Energydash",
+        "description": "Energydash est ajouté à la barre latérale. Vous y choisissez votre prix de l'électricité et vos compteurs, et vous ajoutez vos appareils."
+      },
+      "reconfigure": {
+        "title": "Reconfigurer",
+        "description": "Les prix et les compteurs se trouvent dans le panneau Energydash, sous Paramètres. Ici, vous pouvez effacer les données calculées ou repartir de zéro.",
+        "data": {
+          "reset": "Effacer les données"
+        },
+        "data_description": {
+          "reset": "Les appareils et les paramètres de prix sont conservés, sauf si vous choisissez de repartir de zéro. Tout est ensuite recalculé sur l'historique."
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Energydash est déjà configuré.",
+      "reconfigure_successful": "Enregistré."
+    },
+    "create_entry": {
+      "default": "Energydash est configuré. Ouvrez-le dans la barre latérale pour choisir votre prix de l'électricité."
+    }
+  },
+  "selector": {
+    "reset": {
+      "options": {
+        "none": "Tout conserver",
+        "data": "Effacer les données calculées, conserver les appareils",
+        "all": "Repartir de zéro : supprimer les appareils et les données"
+      }
+    },
+    "reset_scope": {
+      "options": {
+        "data": "Données calculées uniquement",
+        "all": "Appareils et données"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cost_today": {
+        "name": "Coût aujourd'hui",
+        "state_attributes": {
+          "kwh": {
+            "name": "Énergie"
+          },
+          "solar_kwh": {
+            "name": "Énergie solaire"
+          },
+          "grid_kwh": {
+            "name": "Énergie du réseau"
+          },
+          "grid_cost": {
+            "name": "Coût réseau"
+          },
+          "solar_cost": {
+            "name": "Coût solaire"
+          },
+          "cost_all_grid": {
+            "name": "Coût sans solaire"
+          },
+          "price_per_kwh": {
+            "name": "Prix par kWh"
+          }
+        }
+      },
+      "cost_month": {
+        "name": "Coût ce mois-ci",
+        "state_attributes": {
+          "kwh": {
+            "name": "Énergie"
+          },
+          "solar_kwh": {
+            "name": "Énergie solaire"
+          },
+          "grid_kwh": {
+            "name": "Énergie du réseau"
+          },
+          "grid_cost": {
+            "name": "Coût réseau"
+          },
+          "solar_cost": {
+            "name": "Coût solaire"
+          },
+          "cost_all_grid": {
+            "name": "Coût sans solaire"
+          },
+          "price_per_kwh": {
+            "name": "Prix par kWh"
+          }
+        }
+      },
+      "last_session": {
+        "name": "Dernière session",
+        "state_attributes": {
+          "start": {
+            "name": "Début"
+          },
+          "end": {
+            "name": "Fin"
+          },
+          "kwh": {
+            "name": "Énergie"
+          },
+          "solar_kwh": {
+            "name": "Énergie solaire"
+          },
+          "grid_kwh": {
+            "name": "Énergie du réseau"
+          },
+          "grid_cost": {
+            "name": "Coût réseau"
+          },
+          "cost_all_grid": {
+            "name": "Coût sans solaire"
+          }
+        }
+      },
+      "house_cost_today": {
+        "name": "Coût de toute la maison aujourd'hui",
+        "state_attributes": {
+          "kwh": {
+            "name": "Énergie"
+          },
+          "solar_kwh": {
+            "name": "Énergie solaire"
+          },
+          "price_per_kwh": {
+            "name": "Prix par kWh"
+          }
+        }
+      },
+      "rest_cost_today": {
+        "name": "Coût du reste de la maison aujourd'hui",
+        "state_attributes": {
+          "kwh": {
+            "name": "Énergie"
+          },
+          "solar_kwh": {
+            "name": "Énergie solaire"
+          },
+          "price_per_kwh": {
+            "name": "Prix par kWh"
+          }
+        }
+      },
+      "baseload": {
+        "name": "Consommation de base",
+        "state_attributes": {
+          "cost_month": {
+            "name": "Coût par mois"
+          },
+          "cost_year": {
+            "name": "Coût par an"
+          },
+          "unexplained_w": {
+            "name": "Non expliqué"
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "missing_entity": {
+      "title": "Energydash ne trouve pas {entity_id}",
+      "description": "L'entité {entity_id} n'existe plus. Choisissez une autre source dans Energydash ou restaurez l'entité."
+    },
+    "net_meter": {
+      "title": "Votre compteur de prélèvement décompte aussi",
+      "description": "Le compteur {entity_id} a diminué plusieurs fois au cours des 2 derniers jours. Cela se produit avec un compteur net unique qui décompte pendant que vous injectez. Energydash interprète une baisse comme un nouveau compteur, ce qui donne des coûts trop élevés. Dans Energydash, sous Paramètres, choisissez des compteurs distincts pour le prélèvement sur le réseau et l'injection sur le réseau. La plupart des intégrations de compteur intelligent fournissent les deux."
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "Energydash n'est pas configuré."
+    }
+  },
+  "services": {
+    "recalculate": {
+      "name": "Recalculer",
+      "description": "Remplace les résultats calculés par un nouveau calcul sur l'historique de l'enregistreur (généralement 10 jours) et les statistiques à long terme antérieures.",
+      "fields": {
+        "device_id": {
+          "name": "Appareil",
+          "description": "ID d'un appareil Energydash. Laissez vide pour tous les appareils et la maison."
+        }
+      }
+    },
+    "reset": {
+      "name": "Réinitialiser",
+      "description": "Efface les données calculées, ou supprime aussi tous les appareils.",
+      "fields": {
+        "scope": {
+          "name": "Éléments à effacer",
+          "description": "Uniquement les données calculées, ou aussi les appareils."
+        }
+      }
+    }
+  }
+}

@@ -18,7 +18,7 @@ class SessionEvent:
 
 
 class PowerSessionDetector:
-    """'Sessies uit het verbruik': start above a threshold, end after `off_delay` below it."""
+    """'Sessions from the power use': start above a threshold, end after `off_delay` below it."""
 
     def __init__(self, threshold_w: float, off_delay_min: float, min_duration_min: float) -> None:
         self.threshold = float(threshold_w)
@@ -91,7 +91,7 @@ class PowerSessionDetector:
 
 
 class EntitySessionDetector:
-    """'Sessies uit een entiteit': a session runs while the entity has one of the chosen states."""
+    """'Sessions from an entity': a session runs while the entity has one of the chosen states."""
 
     def __init__(self, states: list[str]) -> None:
         self.states = {str(s) for s in states}

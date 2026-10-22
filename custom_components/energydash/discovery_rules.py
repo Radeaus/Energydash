@@ -7,21 +7,50 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .const import TYPE_CHARGER, TYPE_CONTINUOUS, TYPE_SESSIONS
-from .price import parse_forecast
+from .price import parse_forecast, unit_factor
 
+# Name parts in English, Dutch, German, French, Spanish, Italian, Swedish, Danish, and Norwegian.
 PERIODIC_TOKENS = (
     "today", "vandaag", "yesterday", "gisteren", "daily", "_dag_", "_dag", "dag_",
     "week", "month", "maand", "year", "jaar", "last_", "cycle", "_hour", "_uur",
+    "heute", "gestern", "taglich", "monat", "jahr", "woche", "stunde",
+    "aujourd", "_hier", "_jour", "semaine", "_mois", "annee", "heure",
+    "_hoy", "_ayer", "diario", "semana", "_mes_", "_ano_",
+    "oggi", "_ieri", "giorn", "settiman", "_mese", "_anno",
+    "idag", "_igar", "manad", "i_dag", "maned", "_aar_",
 )
 DERIVED_PLATFORMS = {
     "integration", "template", "utility_meter", "statistics", "derivative", "min_max",
     "group", "filter", "energydash", "powercalc", "compensation",
 }
-CHARGER_TOKENS = ("laadpaal", "charger", "wallbox", "evse", "laadstation", "easee", "zaptec", "alfen")
-SESSION_TOKENS = ("wasmachine", "washer", "washing", "droger", "dryer", "vaatwasser", "dishwasher", "oven", "airfryer", "magnetron")
+CHARGER_TOKENS = (
+    "laadpaal", "charger", "wallbox", "evse", "laadstation", "easee", "zaptec", "alfen",
+    "ladestation", "ladepunkt", "borne", "recharge", "cargador", "laddbox", "laddstation", "ladeboks",
+    "go_e", "goe_", "ohme", "myenergi", "zappi", "pod_point", "wallbox", "openevse", "keba", "peblar",
+)
+SESSION_TOKENS = (
+    "wasmachine", "washer", "washing", "droger", "dryer", "vaatwasser", "dishwasher", "oven", "airfryer", "magnetron",
+    "waschmaschine", "trockner", "trocknen", "geschirrspuler", "spulmaschine", "backofen", "mikrowelle",
+    "lave_linge", "lavelinge", "seche_linge", "lave_vaisselle", "_four", "micro_onde",
+    "lavadora", "secadora", "lavavajillas", "horno", "lavatrice", "asciugatrice", "lavastoviglie", "forno",
+    "tvattmaskin", "torktumlare", "diskmaskin", "vaskemaskin", "vaskemaskine", "torketrommel", "oppvask", "opvask",
+)
 # Says whether the device is online, not whether it is in use: never a session source.
 CONNECTIVITY_TOKENS = ("verbinding", "connect", "online", "wifi", "rssi", "signal", "update", "firmware", "bereikbaar", "available")
-CONTINUOUS_TOKENS = ("server", "koelkast", "fridge", "vriezer", "freezer", "airco", "warmtepomp", "heat_pump", "heatpump", "router", "nas", "boiler", "aquarium")
+CONTINUOUS_TOKENS = (
+    "server", "koelkast", "fridge", "vriezer", "freezer", "airco", "warmtepomp", "heat_pump", "heatpump", "router", "nas", "boiler", "aquarium",
+    "kuhlschrank", "gefrier", "warmepumpe", "klima", "refrigerateur", "frigo", "congelateur", "pompe_a_chaleur", "climatis",
+    "nevera", "frigorifico", "congelador", "bomba_de_calor", "frigorifero", "congelatore", "pompa_di_calore", "condizionatore",
+    "kylskap", "frys", "varmepump", "kjoleskap", "fryser", "varmepumpe", "air_condition", "water_heater", "ac_unit",
+)
+
+
+def _fold(text: str) -> str:
+    """Lowercase without accents and with umlauts dropped, so 'Kühlschrank' matches 'kuhlschrank'."""
+    import unicodedata  # noqa: PLC0415
+
+    norm = unicodedata.normalize("NFKD", text.lower())
+    return "".join(c for c in norm if not unicodedata.combining(c)).replace("-", "_").replace(" ", "_")
 
 
 @dataclass
@@ -43,13 +72,13 @@ class Candidate:
 
 
 def is_periodic(entity_id: str) -> bool:
-    obj = entity_id.split(".", 1)[-1].lower()
+    obj = _fold(entity_id.split(".", 1)[-1])
     return any(tok in obj for tok in PERIODIC_TOKENS)
 
 
 def suggest_type(text: str) -> tuple[str, str]:
     """Suggest a device type from names; returns (type, reason)."""
-    low = text.lower()
+    low = _fold(text)
     if any(t in low for t in CHARGER_TOKENS):
         return TYPE_CHARGER, "name"
     if any(t in low for t in SESSION_TOKENS):
@@ -125,8 +154,8 @@ def grid_suggestions(prefs: dict[str, Any]) -> dict[str, Any]:
     with two inverters has two solar sources. Prices only come from the import flow (the export
     flow has its own compensation price).
     """
-    found: dict[str, Any] = {"import": [], "export": [], "solar": [], "price_entity": None, "price_fixed": None,
-                             "export_price_entity": None, "export_price_fixed": None}
+    found: dict[str, Any] = {"import": [], "export": [], "solar": [], "battery_charge": [], "battery_discharge": [],
+                             "price_entity": None, "price_fixed": None, "export_price_entity": None, "export_price_fixed": None}
 
     def add(key: str, value: Any) -> None:
         if isinstance(value, str) and "." in value and value not in found[key]:
@@ -149,6 +178,10 @@ def grid_suggestions(prefs: dict[str, Any]) -> dict[str, Any]:
                 first("export_price_fixed", obj.get("number_energy_price"))
             elif kind == "solar" and "stat_energy_from" in obj:
                 add("solar", obj["stat_energy_from"])
+            elif kind == "battery" and "stat_energy_from" in obj and "stat_energy_to" in obj:
+                # From the battery is discharge, to the battery is charge.
+                add("battery_discharge", obj["stat_energy_from"])
+                add("battery_charge", obj["stat_energy_to"])
             for value in obj.values():
                 if isinstance(value, (dict, list)):
                     walk(value, kind)
@@ -168,7 +201,7 @@ def pick_price_entity(sensors: list[tuple[str, str | None, dict[str, Any], str]]
     """
     best: tuple[tuple, str] | None = None
     for entity_id, unit, attributes, state in sensors:
-        if not unit or "/kwh" not in unit.lower().replace(" ", ""):
+        if not is_price_unit(unit):
             continue
         try:
             value = float(state)
@@ -182,3 +215,30 @@ def pick_price_entity(sensors: list[tuple[str, str | None, dict[str, Any], str]]
         if best is None or key < best[0]:
             best = (key, entity_id)
     return best[1] if best else None
+
+
+def is_price_unit(unit: str | None) -> bool:
+    """A price per energy unit: EUR/kWh, ct/kWh, öre/kWh, €/MWh and similar."""
+    low = (unit or "").lower().replace(" ", "")
+    return low.endswith("/kwh") or low.endswith("/mwh")
+
+
+def price_unit_note(unit: str | None) -> float | None:
+    """The conversion factor when the unit is not a main currency per kWh, else None (for the panel)."""
+    factor = unit_factor(unit)
+    return None if factor == 1.0 else factor
+
+
+def counts_down(series: list[tuple[Any, float]], min_drop: float = 0.01, min_times: int = 3) -> bool:
+    """A meter that counts down while exporting (a single net meter) instead of separate counters.
+
+    A reset falls to (near) zero; a net meter drops a little, many times. Energydash needs separate
+    import and export counters, because a drop is otherwise read as a new counter (docs/02 §1).
+    """
+    drops = 0
+    for (_, prev), (_, value) in zip(series, series[1:]):
+        if value < prev - min_drop and value > prev * 0.5:
+            drops += 1
+            if drops >= min_times:
+                return True
+    return False

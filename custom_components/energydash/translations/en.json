@@ -10,6 +10,9 @@
         "description": "Prices and meters are in the Energydash panel, under Settings. Here you can clear calculated data or start completely fresh.",
         "data": {
           "reset": "Clear data"
+        },
+        "data_description": {
+          "reset": "Devices and price settings stay unless you choose to start fresh. Everything is recalculated over the history afterward."
         }
       }
     },
@@ -38,18 +41,76 @@
   },
   "entity": {
     "sensor": {
-      "cost_today": { "name": "Cost today" },
-      "cost_month": { "name": "Cost this month" },
-      "last_session": { "name": "Last session" },
-      "house_cost_today": { "name": "Whole house cost today" },
-      "rest_cost_today": { "name": "Rest of the house cost today" },
-      "baseload": { "name": "Baseload" }
+      "cost_today": {
+        "name": "Cost today",
+        "state_attributes": {
+          "kwh": { "name": "Energy" },
+          "solar_kwh": { "name": "Solar energy" },
+          "grid_kwh": { "name": "Grid energy" },
+          "grid_cost": { "name": "Grid cost" },
+          "solar_cost": { "name": "Solar cost" },
+          "cost_all_grid": { "name": "Cost without solar" },
+          "price_per_kwh": { "name": "Price per kWh" }
+        }
+      },
+      "cost_month": {
+        "name": "Cost this month",
+        "state_attributes": {
+          "kwh": { "name": "Energy" },
+          "solar_kwh": { "name": "Solar energy" },
+          "grid_kwh": { "name": "Grid energy" },
+          "grid_cost": { "name": "Grid cost" },
+          "solar_cost": { "name": "Solar cost" },
+          "cost_all_grid": { "name": "Cost without solar" },
+          "price_per_kwh": { "name": "Price per kWh" }
+        }
+      },
+      "last_session": {
+        "name": "Last session",
+        "state_attributes": {
+          "start": { "name": "Start" },
+          "end": { "name": "End" },
+          "kwh": { "name": "Energy" },
+          "solar_kwh": { "name": "Solar energy" },
+          "grid_kwh": { "name": "Grid energy" },
+          "grid_cost": { "name": "Grid cost" },
+          "cost_all_grid": { "name": "Cost without solar" }
+        }
+      },
+      "house_cost_today": {
+        "name": "Whole house cost today",
+        "state_attributes": {
+          "kwh": { "name": "Energy" },
+          "solar_kwh": { "name": "Solar energy" },
+          "price_per_kwh": { "name": "Price per kWh" }
+        }
+      },
+      "rest_cost_today": {
+        "name": "Rest of the house cost today",
+        "state_attributes": {
+          "kwh": { "name": "Energy" },
+          "solar_kwh": { "name": "Solar energy" },
+          "price_per_kwh": { "name": "Price per kWh" }
+        }
+      },
+      "baseload": {
+        "name": "Baseload",
+        "state_attributes": {
+          "cost_month": { "name": "Cost per month" },
+          "cost_year": { "name": "Cost per year" },
+          "unexplained_w": { "name": "Unexplained" }
+        }
+      }
     }
   },
   "issues": {
     "missing_entity": {
       "title": "Energydash cannot find {entity_id}",
-      "description": "The entity {entity_id} does not exist (anymore). Choose another source in Energydash or restore the entity."
+      "description": "The entity {entity_id} no longer exists. Choose another source in Energydash or restore the entity."
+    },
+    "net_meter": {
+      "title": "Your import meter also counts down",
+      "description": "The meter {entity_id} went down several times in the last 2 days. This happens with a single net meter that counts down while you export. Energydash reads a drop as a new counter, so costs come out too high. In Energydash, under Settings, choose separate counters for import from the grid and export to the grid. Most smart meter integrations provide both."
     }
   },
   "exceptions": {
@@ -58,16 +119,16 @@
   "services": {
     "recalculate": {
       "name": "Recalculate",
-      "description": "Replace calculated results by a recalculation over the recorder history (usually 10 days).",
+      "description": "Replaces calculated results with a recalculation over the recorder history (usually 10 days) and the long-term statistics before it.",
       "fields": {
-        "device_id": { "name": "Device", "description": "Energydash device id. Empty: all devices and the house." }
+        "device_id": { "name": "Device", "description": "ID of an Energydash device. Leave empty for all devices and the house." }
       }
     },
     "reset": {
       "name": "Reset",
-      "description": "Clear calculated data, or also remove all devices.",
+      "description": "Clears calculated data, or also removes all devices.",
       "fields": {
-        "scope": { "name": "What to clear", "description": "data: calculated data only. all: devices and data." }
+        "scope": { "name": "What to clear", "description": "Only the calculated data, or the devices as well." }
       }
     }
   }

@@ -156,7 +156,7 @@ class DeviceTracker:
     def tick(
         self, t: datetime, counter_kwh: float | None, import_kwh: float | None, prices: Prices, solar_kwh: float | None = None
     ) -> TrackerOutput:
-        """Periodic: base refresh (docs/02 'basis vasthouden'), session timeouts, power integration."""
+        """Periodic: base refresh (docs/02 'Keeping the base between sessions'), session timeouts, power integration."""
         out = self._housekeeping(t)
         if self.power_only:
             out.extend(self._integrate(t, import_kwh, prices, self.power_w, solar_kwh))
@@ -352,12 +352,19 @@ class DeviceTracker:
 
 
 class HouseTracker:
-    """Whole-house consumption: import + (solar production - export) when solar is known."""
+    """Whole-house consumption: import + (solar production - export) when solar is known,
+    + (battery discharge - battery charge) when a home battery is known."""
 
     def __init__(self) -> None:
-        self.last: dict[str, float | None] = {"import": None, "export": None, "solar": None}
+        self.last: dict[str, float | None] = {"import": None, "export": None, "solar": None, "charge": None, "discharge": None}
         self.last_time: datetime | None = None
         self.exported = 0.0  # export (kWh) of the last step, for the solar figures
+
+    def _delta(self, key: str, value: float | None) -> float | None:
+        prev = self.last.get(key)
+        if value is None or prev is None:
+            return None
+        return counter_delta(prev, value)[0]
 
     def tick(
         self,
@@ -366,30 +373,32 @@ class HouseTracker:
         export_kwh: float | None,
         solar_kwh: float | None,
         prices: Prices,
+        charge_kwh: float | None = None,
+        discharge_kwh: float | None = None,
     ) -> Step | None:
+        now = {"import": import_kwh, "export": export_kwh, "solar": solar_kwh, "charge": charge_kwh, "discharge": discharge_kwh}
         if import_kwh is None:
             return None
-        if self.last_time is None or self.last["import"] is None:
-            self.last = {"import": import_kwh, "export": export_kwh, "solar": solar_kwh}
+        if self.last_time is None or self.last.get("import") is None:
+            self.last = now
             self.last_time = t
             return None
         if t <= self.last_time:
             return None
-        d_imp, _ = counter_delta(self.last["import"], import_kwh)
-        house = d_imp
-        d_exp = 0.0
-        if export_kwh is not None and self.last["export"] is not None:
-            d_exp, _ = counter_delta(self.last["export"], export_kwh)
+        d_imp, _ = counter_delta(self.last["import"], import_kwh)  # type: ignore[arg-type]
+        d_exp = self._delta("export", export_kwh) or 0.0
         self.exported = d_exp
-        if solar_kwh is not None and self.last["solar"] is not None:
-            d_sol, _ = counter_delta(self.last["solar"], solar_kwh)
-            house += max(d_sol - d_exp, 0.0)
+        own = 0.0
+        d_sol = self._delta("solar", solar_kwh)
+        if d_sol is not None:
+            own += max(d_sol - d_exp, 0.0)
+        d_chg, d_dis = self._delta("charge", charge_kwh), self._delta("discharge", discharge_kwh)
+        if d_chg is not None and d_dis is not None:
+            # Charging from the grid is in the import but not used in the house; discharging is.
+            own += d_dis - d_chg
+        house = max(d_imp + own, 0.0)
         step = build_step(self.last_time, t, house, d_imp, prices)
-        self.last = {
-            "import": import_kwh,
-            "export": export_kwh if export_kwh is not None else self.last["export"],
-            "solar": solar_kwh if solar_kwh is not None else self.last["solar"],
-        }
+        self.last = {k: (v if v is not None else self.last.get(k)) for k, v in now.items()}
         self.last_time = t
         return step
 
@@ -399,5 +408,5 @@ class HouseTracker:
     def restore(self, data: dict[str, Any] | None) -> None:
         if not data:
             return
-        self.last = data.get("last") or self.last
+        self.last = {**self.last, **(data.get("last") or {})}
         self.last_time = parse_time(data.get("last_time"))

@@ -1,0 +1,203 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Energydash",
+        "description": "Energydash wird zur Seitenleiste hinzugefügt. Dort wählst du deinen Strompreis und deine Zähler und fügst deine Geräte hinzu."
+      },
+      "reconfigure": {
+        "title": "Neu einrichten",
+        "description": "Preise und Zähler findest du im Energydash-Panel unter Einstellungen. Hier kannst du berechnete Daten löschen oder komplett neu beginnen.",
+        "data": {
+          "reset": "Daten löschen"
+        },
+        "data_description": {
+          "reset": "Geräte und Preiseinstellungen bleiben erhalten, außer du wählst einen Neustart. Anschließend wird alles über den Verlauf neu berechnet."
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Energydash ist bereits eingerichtet.",
+      "reconfigure_successful": "Gespeichert."
+    },
+    "create_entry": {
+      "default": "Energydash ist eingerichtet. Öffne es in der Seitenleiste, um deinen Strompreis zu wählen."
+    }
+  },
+  "selector": {
+    "reset": {
+      "options": {
+        "none": "Alles behalten",
+        "data": "Berechnete Daten löschen, Geräte behalten",
+        "all": "Neu beginnen: Geräte und Daten entfernen"
+      }
+    },
+    "reset_scope": {
+      "options": {
+        "data": "Nur berechnete Daten",
+        "all": "Geräte und Daten"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cost_today": {
+        "name": "Kosten heute",
+        "state_attributes": {
+          "kwh": {
+            "name": "Energie"
+          },
+          "solar_kwh": {
+            "name": "Solarenergie"
+          },
+          "grid_kwh": {
+            "name": "Netzenergie"
+          },
+          "grid_cost": {
+            "name": "Netzkosten"
+          },
+          "solar_cost": {
+            "name": "Solarkosten"
+          },
+          "cost_all_grid": {
+            "name": "Kosten ohne Solarstrom"
+          },
+          "price_per_kwh": {
+            "name": "Preis pro kWh"
+          }
+        }
+      },
+      "cost_month": {
+        "name": "Kosten diesen Monat",
+        "state_attributes": {
+          "kwh": {
+            "name": "Energie"
+          },
+          "solar_kwh": {
+            "name": "Solarenergie"
+          },
+          "grid_kwh": {
+            "name": "Netzenergie"
+          },
+          "grid_cost": {
+            "name": "Netzkosten"
+          },
+          "solar_cost": {
+            "name": "Solarkosten"
+          },
+          "cost_all_grid": {
+            "name": "Kosten ohne Solarstrom"
+          },
+          "price_per_kwh": {
+            "name": "Preis pro kWh"
+          }
+        }
+      },
+      "last_session": {
+        "name": "Letzte Sitzung",
+        "state_attributes": {
+          "start": {
+            "name": "Beginn"
+          },
+          "end": {
+            "name": "Ende"
+          },
+          "kwh": {
+            "name": "Energie"
+          },
+          "solar_kwh": {
+            "name": "Solarenergie"
+          },
+          "grid_kwh": {
+            "name": "Netzenergie"
+          },
+          "grid_cost": {
+            "name": "Netzkosten"
+          },
+          "cost_all_grid": {
+            "name": "Kosten ohne Solarstrom"
+          }
+        }
+      },
+      "house_cost_today": {
+        "name": "Kosten ganzes Haus heute",
+        "state_attributes": {
+          "kwh": {
+            "name": "Energie"
+          },
+          "solar_kwh": {
+            "name": "Solarenergie"
+          },
+          "price_per_kwh": {
+            "name": "Preis pro kWh"
+          }
+        }
+      },
+      "rest_cost_today": {
+        "name": "Kosten Rest des Hauses heute",
+        "state_attributes": {
+          "kwh": {
+            "name": "Energie"
+          },
+          "solar_kwh": {
+            "name": "Solarenergie"
+          },
+          "price_per_kwh": {
+            "name": "Preis pro kWh"
+          }
+        }
+      },
+      "baseload": {
+        "name": "Grundlast",
+        "state_attributes": {
+          "cost_month": {
+            "name": "Kosten pro Monat"
+          },
+          "cost_year": {
+            "name": "Kosten pro Jahr"
+          },
+          "unexplained_w": {
+            "name": "Nicht zugeordnet"
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "missing_entity": {
+      "title": "Energydash findet {entity_id} nicht",
+      "description": "Die Entität {entity_id} existiert nicht mehr. Wähle in Energydash eine andere Quelle oder stelle die Entität wieder her."
+    },
+    "net_meter": {
+      "title": "Dein Bezugszähler zählt auch rückwärts",
+      "description": "Der Zähler {entity_id} ist in den letzten 2 Tagen mehrmals gesunken. Das passiert bei einem einzelnen Saldierungszähler, der bei Einspeisung rückwärts zählt. Energydash wertet einen Rückgang als neuen Zähler, daher fallen die Kosten zu hoch aus. Wähle in Energydash unter Einstellungen getrennte Zähler für Bezug aus dem Netz und Einspeisung ins Netz. Die meisten Smart-Meter-Integrationen stellen beide bereit."
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "Energydash ist nicht eingerichtet."
+    }
+  },
+  "services": {
+    "recalculate": {
+      "name": "Neu berechnen",
+      "description": "Ersetzt berechnete Ergebnisse durch eine Neuberechnung über den Recorder-Verlauf (meist 10 Tage) und die davor liegenden Langzeitstatistiken.",
+      "fields": {
+        "device_id": {
+          "name": "Gerät",
+          "description": "ID eines Energydash-Geräts. Leer lassen für alle Geräte und das Haus."
+        }
+      }
+    },
+    "reset": {
+      "name": "Zurücksetzen",
+      "description": "Löscht berechnete Daten oder entfernt zusätzlich alle Geräte.",
+      "fields": {
+        "scope": {
+          "name": "Was gelöscht wird",
+          "description": "Nur die berechneten Daten oder auch die Geräte."
+        }
+      }
+    }
+  }
+}

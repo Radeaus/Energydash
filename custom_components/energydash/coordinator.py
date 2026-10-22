@@ -10,8 +10,12 @@ import re
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from homeassistant.components.recorder import get_instance
+from homeassistant.components.recorder.models import StatisticMetaData
+from homeassistant.components.recorder.statistics import async_add_external_statistics
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, HomeAssistant, State, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event, async_track_time_interval
@@ -20,6 +24,8 @@ from homeassistant.util import slugify
 
 from .aggregate import Aggregator, describe, hour_key
 from .const import (
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CONTRACT,
     CONF_EXPORT_ENTITY,
     CONF_EXPORT_PRICE_ENTITY,
@@ -40,10 +46,12 @@ from .const import (
     DEFAULT_THRESHOLD_W,
     DEVICE_TYPES,
     DOMAIN,
+    EVENT_SESSION_ENDED,
     EXPORT_KEY,
     HOUSE_KEY,
     HOUSE_TICK_S,
     RECENT_DAYS,
+    REST_KEY,
     SESSION_FROM_ENTITY,
     SESSION_FROM_POWER,
     SOLAR_MODE_EXPORT,
@@ -53,9 +61,11 @@ from .const import (
 from .engine import to_kwh, to_watt
 from .backfill import HOUR, backfill_device, backfill_house, prices_from_cost, self_use_hourly, sum_hourly
 from .history import INVALID, async_get_hourly, async_get_states, keep_days, numeric_series, unit_of
+from .longterm import hourly_fields, session_event_data, statistic_rows
 from .replay import replay_device, replay_house, self_use_series, sum_counters
-from .price import PriceProvider, PriceSeries, export_relation, parse_forecast
-from .settings import entity_ids, export_mode, markup
+from .discovery_rules import counts_down
+from .price import PriceProvider, PriceSeries, best_forecast, export_relation, interval_groups, parse_forecast, unit_factor
+from .settings import entity_ids, export_mode, has_battery, low_hours, markup, vat
 from .storage import EnergydashStorage
 from .tracker import DeviceTracker, HouseTracker, TrackerOutput
 
@@ -66,8 +76,56 @@ SIGNAL_DEVICES = f"{DOMAIN}_devices"
 OBSERVED_PRICE_DAYS = 2
 # Bump to recalculate everything once after an update that changes calculated results.
 CALC_VERSION = 2
+# Bump to write all long-term statistics again once after an update.
+STATS_VERSION = 1
+STATS_RECENT_HOURS = 3  # hours written again every hour (late counter steps)
 MAX_RECALC_DAYS = 30
 BACKFILL_DAYS = 366  # older than the recorder window: hourly long-term statistics
+ACTION_REFRESH_S = 3600  # prices from an action (no forecast attribute) are fetched again every hour
+ACTION_RETRY_S = 600  # until the first prices arrive (the price integration may still be starting)
+NET_METER_DAYS = 2
+
+
+def _price_actions(platform: str, entry_id: str | None, day: date, tz: Any) -> list[tuple[str, str, dict[str, Any]]]:
+    """Actions that return the prices of a price integration without a forecast attribute.
+
+    Only core integrations whose response shape is known; see price.interval_groups.
+    """
+    start = datetime.combine(day, datetime.min.time(), tzinfo=tz)
+    span = {"start": start.isoformat(), "end": (start + timedelta(days=2)).isoformat()}
+    if platform == "nordpool" and entry_id:
+        return [("nordpool", "get_prices_for_date", {"config_entry": entry_id, "date": (day + timedelta(days=d)).isoformat()}) for d in (0, 1)]
+    if platform == "tibber":
+        return [("tibber", "get_prices", span)]
+    if platform == "energyzero" and entry_id:
+        return [("energyzero", "get_energy_prices", {"config_entry": entry_id, "incl_vat": True, **span})]
+    if platform == "easyenergy" and entry_id:
+        return [("easyenergy", "get_energy_usage_prices", {"config_entry": entry_id, "incl_vat": True, **span})]
+    return []
+
+
+
+def _stat_meta(statistic_id: str, name: str, unit: str, unit_class: str | None) -> StatisticMetaData:
+    """Metadata for a summed statistic, for both older and newer Home Assistant versions.
+
+    Newer versions replaced `has_mean` with `mean_type` and added `unit_class`; only the keys
+    this version knows are passed.
+    """
+    meta: dict[str, Any] = {
+        "source": DOMAIN, "statistic_id": statistic_id, "name": name,
+        "unit_of_measurement": unit, "has_sum": True, "has_mean": False, "unit_class": unit_class,
+    }
+    try:
+        from homeassistant.components.recorder.models import StatisticMeanType  # 2025.6+
+
+        meta["mean_type"] = StatisticMeanType.NONE
+    except ImportError:
+        pass
+    known = StatisticMetaData.__required_keys__ | StatisticMetaData.__optional_keys__
+    if "mean_type" in known:
+        meta.pop("has_mean")
+    return StatisticMetaData(**{k: v for k, v in meta.items() if k in known})  # type: ignore[typeddict-item]
+
 
 DEVICE_FIELDS = (
     "id", "name", "type", "energy_entity", "energy_is_power", "power_entity", "session_source",
@@ -95,6 +153,15 @@ class LivePrices:
         self.export_current: float | None = None
         self.forecast_attr: str | None = None
         self.scale = 1.0
+        self.unit: str | None = None
+        self.factor = 1.0  # unit conversion to the main currency per kWh (ct/kWh: 0.01)
+        self.action_forecast = PriceSeries()  # prices from an action, for entities without a forecast attribute
+        self.action_name: str | None = None
+        self.action_at: datetime | None = None
+
+    def set_unit(self, unit: str | None) -> None:
+        self.unit = unit
+        self.factor = unit_factor(unit)
 
     def add_point(self, t: datetime, value: float, export: bool = False) -> None:
         pts = self.export_points if export else self.points
@@ -110,9 +177,15 @@ class LivePrices:
             self.current = value
 
     def update_forecast(self, state: State, now: datetime) -> None:
+        self.set_unit(state.attributes.get("unit_of_measurement"))
         parsed = parse_forecast(dict(state.attributes), _float(state.state), now)
-        self.forecast = parsed.price
-        self.forecast_export = parsed.export
+        if not parsed.price and self.action_forecast:
+            self.forecast = self.action_forecast
+            self.forecast_export = PriceSeries()
+            self.forecast_attr = self.action_name
+            return
+        self.forecast = parsed.price.scaled(self.factor)
+        self.forecast_export = parsed.export.scaled(self.factor)
         self.forecast_attr = parsed.attribute
         self.scale = parsed.scale
 
@@ -137,6 +210,7 @@ class EnergydashCoordinator:
         self._notify_unsub: CALLBACK_TYPE | None = None
         self._tasks: set[asyncio.Task] = set()
         self._last_prune: date | None = None
+        self._stats_hour: str | None = None
         self._price_cache: tuple[datetime, PriceProvider] | None = None
 
     # ---------------------------------------------------------------- settings
@@ -185,6 +259,8 @@ class EnergydashCoordinator:
         elif self.settings.get(CONF_EXPORT_ENTITY) and EXPORT_KEY not in self.agg.hours:
             # Results from before the solar figures existed: fill the export once.
             self.start_task(self.async_recalculate_house(), "house")
+        self.sync_statistics(full=self.config.get("stats_version") != STATS_VERSION)
+        self._stats_hour = self.hour_now_key()
         _LOGGER.debug("Energydash %s started with %d devices", VERSION, len(self.devices))
 
     async def async_settings_changed(self) -> None:
@@ -252,18 +328,70 @@ class EnergydashCoordinator:
         for target, eid in ((self.prices, ids[0]), (self.export_prices, ids[1])):
             if not eid:
                 continue
+            factor = self._price_factor(eid)
             for t, v in numeric_series(states.get(eid, []), "power"):
-                target.add_point(t, v)
+                target.add_point(t, v * factor)
             st = self.hass.states.get(eid)
             if st is not None:
                 self._update_price_state(target, st)
+        # Through a task: the price integration may still be starting, and its API can be slow.
+        self.prices.action_at = now
+        self.start_task(self._async_fetch_action_prices(), "prices")
+
+    def _price_factor(self, entity_id: str | None) -> float:
+        """Unit conversion of a price entity: ct/kWh, öre/kWh, or €/MWh to the main currency per kWh."""
+        return unit_factor(unit_of(self.hass, entity_id))
 
     def _update_price_state(self, target: LivePrices, state: State) -> None:
         self._price_cache = None
+        target.set_unit(state.attributes.get("unit_of_measurement"))
         val = _float(state.state)
         if val is not None:
-            target.add_point(state.last_changed, val)
+            target.add_point(state.last_changed, val * target.factor)
         target.update_forecast(state, dt_util.utcnow())
+
+    async def _async_fetch_action_prices(self) -> None:
+        """Prices of today and tomorrow through an action, for price entities without a forecast attribute.
+
+        Nord Pool, Tibber, EnergyZero, and easyEnergy in Home Assistant core only offer their
+        prices through an action. Without these, each step gets the price at the time of
+        measuring (docs/02 §3).
+        """
+        s = self.settings
+        eid = s.get(CONF_PRICE_ENTITY)
+        target = self.prices
+        if s.get(CONF_CONTRACT) == CONTRACT_FIXED or not eid:
+            return
+        st = self.hass.states.get(eid)
+        if st is None or (target.forecast and not target.action_name):
+            return  # the entity has its own forecast attribute
+        entry = er.async_get(self.hass).async_get(eid)
+        if entry is None:
+            return
+        calls = _price_actions(entry.platform, entry.config_entry_id, dt_util.now().date(), self.tz)
+        groups: list[list[dict[str, Any]]] = []
+        for domain, service, data in calls:
+            if not self.hass.services.has_service(domain, service):
+                return
+            try:
+                response = await self.hass.services.async_call(domain, service, data, blocking=True, return_response=True)
+            except Exception as err:  # noqa: BLE001 - tomorrow's prices are not published yet, or the API is down
+                _LOGGER.debug("Prices through %s.%s failed: %s", domain, service, err)
+                continue
+            groups.extend(interval_groups(response))
+        if not groups:
+            return
+        raw = _float(st.state)
+        name = f"{calls[0][0]}.{calls[0][1]}"
+        parsed = best_forecast(groups, raw, dt_util.utcnow(), name)
+        if parsed is None:
+            _LOGGER.debug("Prices through %s do not match the state of %s; not used", name, eid)
+            return
+        target.action_forecast = parsed.price.scaled(unit_factor(st.attributes.get("unit_of_measurement")))
+        target.action_name = name
+        target.update_forecast(st, dt_util.utcnow())
+        self._price_cache = None
+        _LOGGER.debug("Prices through %s: %d intervals", name, len(parsed.price.values))
 
     def price_provider(self) -> PriceProvider:
         """Cached for a few seconds: power sensors can update every second."""
@@ -286,10 +414,10 @@ class EnergydashCoordinator:
         # 'auto' from older settings kept the fixed amount as a fallback.
         return {"export_fallback": fixed if mode in (EXPORT_MODE_FIXED, EXPORT_MODE_AUTO) else None}
 
-    def _fixed_tariff(self) -> tuple[float, float, Any]:
+    def _fixed_tariff(self) -> tuple[float, float, Any, Any]:
         s = self.settings
         normal = float(s.get(CONF_PRICE_NORMAL) or 0)
-        return normal, float(s.get(CONF_PRICE_LOW) or normal), self.tz
+        return normal, float(s.get(CONF_PRICE_LOW) or normal), self.tz, low_hours(s)
 
     def _build_price_provider(self) -> PriceProvider:
         s = self.settings
@@ -312,6 +440,7 @@ class EnergydashCoordinator:
             fallback=self.prices.current,
             export_from_import=self._export_relation() if mode == EXPORT_MODE_AUTO else None,
             markup=markup(s),
+            vat=vat(s),
             **self._export_kwargs(),
         )
 
@@ -362,14 +491,23 @@ class EnergydashCoordinator:
         return self._meter_kwh(CONF_IMPORT_ENTITY)
 
     def solar_now(self) -> float | None:
-        """Cumulative solar self-use (production minus export); None without a solar counter."""
-        solar = self._meter_kwh(CONF_SOLAR_ENTITY)
-        if solar is None:
+        """Cumulative own power used in the house: solar production minus export, plus battery
+        discharge minus charge. None without a solar counter or battery, or when one is unavailable."""
+        value = 0.0
+        if self.meter_ids(CONF_SOLAR_ENTITY):
+            solar = self._meter_kwh(CONF_SOLAR_ENTITY)
+            export = self._meter_kwh(CONF_EXPORT_ENTITY)
+            if solar is None or (self.meter_ids(CONF_EXPORT_ENTITY) and export is None):
+                return None  # briefly unavailable: no bound rather than a wrong one
+            value += solar - (export or 0.0)
+        if has_battery(self.settings):
+            charge, discharge = self._meter_kwh(CONF_BATTERY_CHARGE_ENTITY), self._meter_kwh(CONF_BATTERY_DISCHARGE_ENTITY)
+            if charge is None or discharge is None:
+                return None
+            value += discharge - charge
+        elif not self.meter_ids(CONF_SOLAR_ENTITY):
             return None
-        export = self._meter_kwh(CONF_EXPORT_ENTITY)
-        if self.meter_ids(CONF_EXPORT_ENTITY) and export is None:
-            return None  # export briefly unavailable: no bound rather than a wrong one
-        return solar - (export or 0.0)
+        return value
 
     @callback
     def _on_state(self, event: Event[EventStateChangedData]) -> None:
@@ -424,7 +562,10 @@ class EnergydashCoordinator:
             counter = None if dev.get("energy_is_power") else self._state_kwh(dev["energy_entity"])
             self._apply(dev["id"], tr.tick(now, counter, imp, prices, sol))
         if HOUSE_KEY not in self._paused:
-            step = self.house.tick(now, imp, self._meter_kwh(CONF_EXPORT_ENTITY), self._meter_kwh(CONF_SOLAR_ENTITY), prices)
+            step = self.house.tick(
+                now, imp, self._meter_kwh(CONF_EXPORT_ENTITY), self._meter_kwh(CONF_SOLAR_ENTITY), prices,
+                self._meter_kwh(CONF_BATTERY_CHARGE_ENTITY), self._meter_kwh(CONF_BATTERY_DISCHARGE_ENTITY),
+            )
             if step is not None:
                 self.agg.add_step(HOUSE_KEY, step, self.tz)
                 self.agg.add_export(step.t0, step.t1, self.house.exported, prices, self.tz)
@@ -436,6 +577,16 @@ class EnergydashCoordinator:
             self.agg.prune(now, self.tz)
             self._save(archive=True)
             self._check_issues()
+            self.start_task(self._async_check_net_meter(), "net_meter")
+        action_at = self.prices.action_at
+        refresh = ACTION_REFRESH_S if self.prices.action_forecast else ACTION_RETRY_S
+        if action_at is None or (now - action_at).total_seconds() >= refresh:
+            self.prices.action_at = now
+            self.start_task(self._async_fetch_action_prices(), "prices")
+        hour = hour_key(now, self.tz)
+        if hour != self._stats_hour and not self.busy:
+            self._stats_hour = hour
+            self.sync_statistics(full=False)
 
     def _apply(self, dev_id: str, out: TrackerOutput) -> None:
         for step in out.steps:
@@ -443,9 +594,62 @@ class EnergydashCoordinator:
         for sess in out.sessions:
             self.agg.add_session(sess)
             _LOGGER.debug("Session finished for %s: %s", dev_id, sess["fields"])
+            dev = self.device(dev_id)
+            self.hass.bus.async_fire(
+                EVENT_SESSION_ENDED, session_event_data(sess, dev["name"] if dev else dev_id, self.solar_mode)
+            )
         if out.changed:
             self._save()
             self.notify()
+
+    # --------------------------------------------------- long-term statistics
+    def _stat_names(self) -> dict[str, str]:
+        """Series that get statistics, with their name."""
+        names = {d["id"]: d["name"] for d in self.devices}
+        if self.agg.hours.get(HOUSE_KEY):
+            names[HOUSE_KEY] = "Whole house"
+            names[REST_KEY] = "Rest of the house"
+        return names
+
+    @staticmethod
+    def _stat_ids(series: str) -> tuple[str, str]:
+        # Statistic ids allow no leading or double underscore ("_house" -> "cost_house").
+        key = series.strip("_")
+        return f"{DOMAIN}:cost_{key}", f"{DOMAIN}:energy_{key}"
+
+    @callback
+    def sync_statistics(self, full: bool = True) -> None:
+        """Write hourly cost and energy as external statistics, from the stored hours.
+
+        `full` writes every stored hour again, so recalculations replace earlier values; otherwise
+        only the last few completed hours. The current hour follows once it is complete.
+        """
+        if not self.agg.hours:
+            return
+        names = self._stat_names()
+        fields = hourly_fields(self.agg.hours, [d["id"] for d in self.devices])
+        now = dt_util.utcnow()
+        until = hour_key(now, self.tz)
+        since = None if full else hour_key(now - timedelta(hours=STATS_RECENT_HOURS), self.tz)
+        currency = self.hass.config.currency
+        for sid, name in names.items():
+            if sid not in fields:
+                continue
+            cost_rows, kwh_rows = statistic_rows(fields[sid], self.solar_mode, self.tz, since, until)
+            if not cost_rows:
+                continue
+            cost_id, kwh_id = self._stat_ids(sid)
+            async_add_external_statistics(self.hass, _stat_meta(cost_id, f"{name} cost", currency, None), cost_rows)
+            async_add_external_statistics(self.hass, _stat_meta(kwh_id, f"{name} energy", "kWh", "energy"), kwh_rows)
+        if full and self.config.get("stats_version") != STATS_VERSION:
+            self.config["stats_version"] = STATS_VERSION
+            self.start_task(self.storage.async_save_config(self.config), "stats")
+
+    @callback
+    def clear_statistics(self, series: list[str]) -> None:
+        ids = [i for sid in series for i in self._stat_ids(sid)]
+        if ids:
+            get_instance(self.hass).async_clear_statistics(ids)
 
     # ------------------------------------------------------------ notifications
     def subscribe(self, cb: Callable[[dict[str, Any]], None]) -> Callable[[], None]:
@@ -486,6 +690,23 @@ class EnergydashCoordinator:
                 )
             else:
                 ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+
+    async def _async_check_net_meter(self) -> None:
+        """Repair issue when the import meter counts down while exporting (one net meter)."""
+        end = dt_util.utcnow()
+        try:
+            series = await self._history_meter(CONF_IMPORT_ENTITY, end - timedelta(days=NET_METER_DAYS), end)
+        except Exception:  # noqa: BLE001 - recorder not ready
+            _LOGGER.debug("Could not check the import meter", exc_info=True)
+            return
+        ids = self.meter_ids(CONF_IMPORT_ENTITY)
+        if ids and counts_down(series):
+            ir.async_create_issue(
+                self.hass, DOMAIN, "net_meter", is_fixable=False, severity=ir.IssueSeverity.WARNING,
+                translation_key="net_meter", translation_placeholders={"entity_id": ", ".join(ids)},
+            )
+        else:
+            ir.async_delete_issue(self.hass, DOMAIN, "net_meter")
 
     # ----------------------------------------------------------------- devices
     def _clean_device(self, raw: dict[str, Any]) -> dict[str, Any]:
@@ -563,6 +784,7 @@ class EnergydashCoordinator:
             self.config["archived"].append({"id": dev["id"], "name": dev["name"], "type": dev["type"], "removed": dt_util.utcnow().isoformat()})
         else:
             self.agg.clear_series(device_id)
+            self.clear_statistics([device_id])
             self._save(archive=True)
         await self.storage.async_save_config(self.config)
         self._subscribe_entities()
@@ -586,7 +808,8 @@ class EnergydashCoordinator:
         need_attrs = auto and self.solar_mode == SOLAR_MODE_EXPORT
         states = await async_get_states(self.hass, [price_id], start, end, attributes=need_attrs)
         price_states = states.get(price_id, [])
-        observed = PriceSeries.from_steps(numeric_series(price_states, "power"), end + timedelta(days=1))
+        factor = self._price_factor(price_id)
+        observed = PriceSeries.from_steps(numeric_series(price_states, "power"), end + timedelta(days=1)).scaled(factor)
         export_series = None
         export_observed = None
         if need_attrs:
@@ -594,16 +817,18 @@ class EnergydashCoordinator:
             for st in price_states:
                 parsed = parse_forecast(dict(st.attributes), _float(st.state), st.last_changed)
                 for a, b, v in zip(parsed.export.starts, parsed.export.ends, parsed.export.values):
-                    merged[a] = (b, v)
+                    merged[a] = (b, v * factor)
             export_series = PriceSeries.from_intervals([(a, b, v) for a, (b, v) in merged.items()])
         elif export_id:
             exp = await async_get_states(self.hass, [export_id], start, end)
-            export_observed = PriceSeries.from_steps(numeric_series(exp.get(export_id, []), "power"), end + timedelta(days=1))
+            export_observed = PriceSeries.from_steps(
+                numeric_series(exp.get(export_id, []), "power"), end + timedelta(days=1)
+            ).scaled(self._price_factor(export_id))
         return PriceProvider(
             observed=observed, export_series=export_series, export_observed=export_observed,
             fallback=self.prices.current,
             export_from_import=self._export_relation() if auto else None,
-            markup=markup(s), **self._export_kwargs(),
+            markup=markup(s), vat=vat(s), **self._export_kwargs(),
         )
 
     def _export_relation(self) -> tuple[float, float] | None:
@@ -648,9 +873,9 @@ class EnergydashCoordinator:
                 self._paused.discard(dev_id)
                 self.busy.pop(dev_id, None)
         if include_house:
-            await self.async_recalculate_house(imp_series=imp_series, prices=prices, older=older)
+            await self.async_recalculate_house(imp_series=imp_series, prices=prices, older=older, sync=False)
         elif older and not any(k < hour_key(start, self.tz) for k in self.agg.hours.get(HOUSE_KEY, {})):
-            # A first device: also fill the house before the window, so "Rest van het huis" works there.
+            # A first device: also fill the house before the window, so "Rest of the house" works there.
             house_agg = Aggregator()
             self.busy[HOUSE_KEY] = "recalculating"
             self.notify()
@@ -663,18 +888,25 @@ class EnergydashCoordinator:
             finally:
                 self.busy.pop(HOUSE_KEY, None)
         self._save(archive=True)
+        self.sync_statistics()
         self.notify()
 
     async def _backfill_inputs(self, before: datetime, window_prices: PriceProvider) -> dict[str, Any] | None:
         """Hourly statistics before the recorder window: P1 import, solar self-use and prices."""
         start = before - timedelta(days=BACKFILL_DAYS)
-        imp_ids, exp_ids, sol_ids = (self.meter_ids(k) for k in (CONF_IMPORT_ENTITY, CONF_EXPORT_ENTITY, CONF_SOLAR_ENTITY))
+        imp_ids, exp_ids, sol_ids, chg_ids, dis_ids = (
+            self.meter_ids(k)
+            for k in (CONF_IMPORT_ENTITY, CONF_EXPORT_ENTITY, CONF_SOLAR_ENTITY, CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY)
+        )
         try:
-            change = await async_get_hourly(self.hass, imp_ids + exp_ids + sol_ids, start, before, "change")
+            change = await async_get_hourly(self.hass, imp_ids + exp_ids + sol_ids + chg_ids + dis_ids, start, before, "change")
             imp = sum_hourly([change.get(i, {}) for i in imp_ids])
             exported = sum_hourly([change.get(i, {}) for i in exp_ids]) if exp_ids else None
             solar_made = sum_hourly([change.get(i, {}) for i in sol_ids])
-            solar = self_use_hourly(solar_made, exported) if solar_made else None
+            battery = bool(chg_ids and dis_ids)
+            charged = sum_hourly([change.get(i, {}) for i in chg_ids]) if battery else None
+            discharged = sum_hourly([change.get(i, {}) for i in dis_ids]) if battery else None
+            solar = self_use_hourly(solar_made, exported, charged, discharged) if solar_made or battery else None
             prices = await self._backfill_prices(start, before, imp, window_prices)
         except Exception:
             _LOGGER.exception("Reading long-term statistics failed; only the recorder window is used")
@@ -689,7 +921,8 @@ class EnergydashCoordinator:
         if s.get(CONF_CONTRACT) == CONTRACT_FIXED:
             return self.price_provider()
         price_id, export_id = s.get(CONF_PRICE_ENTITY), self._export_entity()
-        mean = (await async_get_hourly(self.hass, [price_id], start, before, "mean")).get(price_id, {})
+        factor = self._price_factor(price_id)
+        mean = {h: v * factor for h, v in (await async_get_hourly(self.hass, [price_id], start, before, "mean")).get(price_id, {}).items()}
         imp_ids = self.meter_ids(CONF_IMPORT_ENTITY)
         if not mean and imp_ids:
             # No statistics for the price entity: use the Energy dashboard's cost sensors of the P1 import.
@@ -699,14 +932,15 @@ class EnergydashCoordinator:
         hourly = lambda values: PriceSeries.from_intervals([(h, h + HOUR, v) for h, v in values.items()])  # noqa: E731
         export: dict[datetime, float] = {}
         if export_id:
-            export = (await async_get_hourly(self.hass, [export_id], start, before, "mean")).get(export_id, {})
+            exp_factor = self._price_factor(export_id)
+            export = {h: v * exp_factor for h, v in (await async_get_hourly(self.hass, [export_id], start, before, "mean")).get(export_id, {}).items()}
         # Export prices only come from the forecast attribute, which neither the recorder (too
         # large) nor statistics keep: derive them from the import price (see export_relation).
         return PriceProvider(
             observed=hourly(mean), export_observed=hourly(export),
             fallback=self.prices.current,
             export_from_import=window_prices.export_from_import,
-            markup=markup(s), **self._export_kwargs(),
+            markup=markup(s), vat=vat(s), **self._export_kwargs(),
         )
 
     async def _backfill_device(self, agg: Aggregator, dev: dict[str, Any], older: dict[str, Any] | None, before: datetime) -> None:
@@ -736,14 +970,19 @@ class EnergydashCoordinator:
         return sum_counters([numeric_series(states.get(i, []), "energy", unit_of(self.hass, i)) for i in ids])
 
     async def _history_solar(self, start: datetime, end: datetime) -> list:
-        """Cumulative solar self-use over the window, for the zon <= self-use bound."""
-        if not self.meter_ids(CONF_SOLAR_ENTITY):
+        """Cumulative own power used in the house over the window, for the zon <= own power bound."""
+        battery = has_battery(self.settings)
+        if not self.meter_ids(CONF_SOLAR_ENTITY) and not battery:
             return []
         solar = await self._history_meter(CONF_SOLAR_ENTITY, start, end)
         export = await self._history_meter(CONF_EXPORT_ENTITY, start, end)
-        return self_use_series(solar, export)
+        charge = await self._history_meter(CONF_BATTERY_CHARGE_ENTITY, start, end) if battery else None
+        discharge = await self._history_meter(CONF_BATTERY_DISCHARGE_ENTITY, start, end) if battery else None
+        return self_use_series(solar, export, charge, discharge)
 
-    async def async_recalculate_house(self, imp_series=None, prices: PriceProvider | None = None, older=None) -> None:
+    async def async_recalculate_house(
+        self, imp_series=None, prices: PriceProvider | None = None, older=None, sync: bool = True
+    ) -> None:
         start, end = self._window()
         self.busy[HOUSE_KEY] = "recalculating"
         self._paused.add(HOUSE_KEY)
@@ -754,6 +993,8 @@ class EnergydashCoordinator:
                 imp_series if imp_series is not None else await self._history_meter(CONF_IMPORT_ENTITY, start, end),
                 await self._history_meter(CONF_EXPORT_ENTITY, start, end),
                 await self._history_meter(CONF_SOLAR_ENTITY, start, end),
+                await self._history_meter(CONF_BATTERY_CHARGE_ENTITY, start, end),
+                await self._history_meter(CONF_BATTERY_DISCHARGE_ENTITY, start, end),
             ]
             house, agg = await self.hass.async_add_executor_job(replay_house, series, prices, start, end, self.tz)
             if older is None:
@@ -771,6 +1012,8 @@ class EnergydashCoordinator:
             self._paused.discard(HOUSE_KEY)
             self.busy.pop(HOUSE_KEY, None)
         self._save(archive=True)
+        if sync:
+            self.sync_statistics()
         self.notify()
 
     # ------------------------------------------------------------------ resets
@@ -778,12 +1021,13 @@ class EnergydashCoordinator:
         """scope 'data': clear calculated results, keep devices. 'all': also remove devices.
 
         Afterwards the history is calculated again right away (house, and devices for 'data'),
-        so the dashboard is complete without a separate "Opnieuw berekenen".
+        so the dashboard is complete without a separate "Recalculate".
         """
         for task in list(self._tasks):
             task.cancel()
         self.busy.clear()
         self._paused.clear()
+        self.clear_statistics(list(self._stat_names()) + [d["id"] for d in self.config["archived"]])
         self.agg.clear_all()
         self.house = HouseTracker()
         if scope == "all":
@@ -811,6 +1055,7 @@ class EnergydashCoordinator:
 
     async def async_import_config(self, data: dict[str, Any], apply_settings: bool) -> int:
         devices = [self._clean_device(d) for d in data.get("devices") or []]
+        self.clear_statistics(list(self._stat_names()) + [d["id"] for d in self.config["archived"]])
         self.agg.clear_all()
         self.house = HouseTracker()
         self.config = {"devices": [], "archived": [], "calc_version": CALC_VERSION}
@@ -854,7 +1099,10 @@ class EnergydashCoordinator:
         return {
             "busy": dict(self.busy),
             "price_attribute": self.prices.forecast_attr,
+            "price_from_action": bool(self.prices.action_name) and self.prices.forecast_attr == self.prices.action_name,
             "price_scale": self.prices.scale,
+            "price_unit": self.prices.unit,
+            "price_factor": self.prices.factor,
             "price_current": self.prices.current,
             "price_export_forecast": bool(self.prices.forecast_export),
             "export_price_now": self._export_price_now(),

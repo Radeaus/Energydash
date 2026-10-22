@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "energydash"
-VERSION = "1.0.4"
+VERSION = "1.0.7"
 
 PANEL_URL_PATH = "energydash"
 PANEL_COMPONENT = "energydash-panel"
@@ -29,7 +29,13 @@ CONF_SOLAR_MODE = "solar_mode"
 CONF_EXPORT_PRICE_ENTITY = "export_price_entity"
 CONF_EXPORT_PRICE_FIXED = "export_price_fixed"
 CONF_EXPORT_PRICE_MODE = "export_price_mode"
-CONF_PRICE_MARKUP = "price_markup"  # €/kWh added to the price entity (taxes, supplier fee)
+CONF_PRICE_MARKUP = "price_markup"  # amount per kWh added to the price entity (taxes, supplier fee)
+CONF_PRICE_VAT = "price_vat"  # percentage added over the price entity plus markup
+CONF_LOW_START = "low_start"  # "23:00": low tariff starts (fixed price with normal and low)
+CONF_LOW_END = "low_end"  # "07:00": low tariff ends
+CONF_LOW_WEEKEND = "low_weekend"  # low tariff all weekend
+CONF_BATTERY_CHARGE_ENTITY = "battery_charge_entity"  # energy into the home battery (kWh counter)
+CONF_BATTERY_DISCHARGE_ENTITY = "battery_discharge_entity"  # energy out of the home battery
 
 CONTRACT_DYNAMIC = "dynamic"
 CONTRACT_FIXED = "fixed"
@@ -42,9 +48,9 @@ EXPORT_MODE_ENTITY = "entity"
 EXPORT_MODE_FIXED = "fixed"
 EXPORT_MODES = [EXPORT_MODE_AUTO, EXPORT_MODE_SAME, EXPORT_MODE_ENTITY, EXPORT_MODE_FIXED]
 
-SOLAR_MODE_EXPORT = "export"  # "Wat je anders had gekregen" (default)
-SOLAR_MODE_FREE = "free"  # "Niets"
-SOLAR_MODE_GRID = "grid"  # "Hetzelfde als stroom uit het net"
+SOLAR_MODE_EXPORT = "export"  # "What you would otherwise have received" (default)
+SOLAR_MODE_FREE = "free"  # "Nothing"
+SOLAR_MODE_GRID = "grid"  # "The same as grid power"
 SOLAR_MODES = [SOLAR_MODE_EXPORT, SOLAR_MODE_FREE, SOLAR_MODE_GRID]
 
 # Device types
@@ -56,7 +62,7 @@ DEVICE_TYPES = [TYPE_SESSIONS, TYPE_CONTINUOUS, TYPE_CHARGER]
 SESSION_FROM_POWER = "power"
 SESSION_FROM_ENTITY = "entity"
 
-# Defaults for "Sessies uit het verbruik"
+# Defaults for sessions from the power use
 DEFAULT_THRESHOLD_W = 3.0
 DEFAULT_OFF_DELAY_MIN = 5.0
 DEFAULT_MIN_DURATION_MIN = 10.0
@@ -78,6 +84,8 @@ MAX_SESSIONS = 2000
 HOUSE_KEY = "_house"
 REST_KEY = "_rest"
 EXPORT_KEY = "_export"  # solar export per hour: [kWh, 0, 0, 0, export value]
+
+EVENT_SESSION_ENDED = f"{DOMAIN}_session_ended"
 
 # Bucket fields: [kwh, zon_kwh, net_cost, all_net_cost, zon_export_value]
 F_KWH, F_ZON, F_NET_COST, F_ALL_NET, F_ZON_EXPORT = range(5)

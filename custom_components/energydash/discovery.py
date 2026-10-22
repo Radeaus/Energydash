@@ -14,6 +14,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_EXPORT_ENTITY,
     CONF_IMPORT_ENTITY,
     CONF_SOLAR_ENTITY,
@@ -110,7 +112,7 @@ async def async_discover(hass: HomeAssistant, settings: dict[str, Any], used: se
 
     excluded: set[str] = set()
     _collect_stats(prefs.get("energy_sources") or [], excluded)
-    for key in (CONF_IMPORT_ENTITY, CONF_EXPORT_ENTITY, CONF_SOLAR_ENTITY):
+    for key in (CONF_IMPORT_ENTITY, CONF_EXPORT_ENTITY, CONF_SOLAR_ENTITY, CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY):
         excluded.update(entity_ids(settings.get(key)))
     excluded_devices = set()
     for eid in excluded:

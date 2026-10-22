@@ -2,7 +2,7 @@
 
 Results are kept per series (device id, `_house`) in local-hour buckets with five fields:
 [kWh, zon kWh, net cost, all-net cost, zon export value]. The solar valuation is applied at
-query time, so changing "Wat kost zonnestroom?" works retroactively and consistently.
+query time, so changing "What does power from your own solar panels cost?" works retroactively and consistently.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def _zero() -> list[float]:
 
 
 def rest_fields(house: list[float], devices: list[float]) -> list[float]:
-    """'Rest van het huis' = house minus devices, never negative."""
+    """'Rest of the house' = house minus devices, never negative."""
     if house[F_KWH] - devices[F_KWH] <= 1e-9:
         return _zero()
     return [max(house[i] - devices[i], 0.0) if i in (F_KWH, F_ZON) else house[i] - devices[i] for i in range(N_FIELDS)]
@@ -246,7 +246,7 @@ class Aggregator:
         }
 
     def baseload(self, devices: list[dict[str, Any]], today: date, solar_mode: str, weeks: int = 8) -> dict[str, Any]:
-        """Sluipverbruik: what the house always uses (docs/02 §6).
+        """Baseload: what the house always uses (docs/02 §6).
 
         Per night hour 02:00-05:00: house minus the devices that run in sessions (a car charging
         at night or a dishwasher on a timer is not baseload). Per night the lowest of those

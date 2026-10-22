@@ -49,6 +49,14 @@ Properties:
 - Using the same interval for both counters is essential.
 - If a production counter is set, `zon` can never be more than what the panels themselves delivered into the house in that interval (production minus export). What the P1 and the panels together don't explain counts as grid power (note `solar_capped`). Without a production counter, this limit doesn't apply.
 
+### Home battery
+With a home battery, "own power" is solar power or power from the battery. The battery counters (into and out of the battery, as in the Energy dashboard) change two things:
+
+- The bound on `zon` uses the own power of the interval: `dOpwek − dExport + dOut − dIn`. At night, a device can only count as own power for as much as the battery delivered.
+- The whole house is `dImport + (dOpwek − dExport) + dOut − dIn`, never below 0. Charging the battery from the grid is in the import, but not used in the house.
+
+Battery losses are not counted separately. Without a production counter, the bound only uses the battery: solar panels without a production counter would then be capped too, so set both.
+
 ### Keeping the base between sessions
 While the device isn't using power, the P1 base (`P1_import(t0)` and `t0`) is refreshed periodically (for example, every 5 minutes). Then the first measurement step after a start only covers the last few minutes, not the whole idle hour before it.
 
@@ -64,8 +72,16 @@ A cloud counter lags slightly behind the real-time P1 (cloud latency). With cons
 
 You choose how the price is entered. Energydash assumes nothing (see `04-ux-and-design.md`, quick start):
 
-- **Price from an entity**: any sensor per kWh, from any supplier. You're asked whether this is the price you actually pay. If not (for example, a bare market price from Nord Pool or ENTSO-e), an **Extra per kWh** is added (energy tax, purchase fee, and VAT combined): `prijs = prijs_entiteit + opslag`.
-- **Fixed price**: one price, or normal and off-peak (off-peak on weekdays 23:00–07:00 and all weekend).
+- **Price from an entity**: any sensor per kWh or MWh, from any supplier. You're asked whether this is the price you actually pay. If not (for example, a bare market price from Nord Pool or ENTSO-e), an **Extra per kWh** (energy tax and supplier fee) and optionally a **VAT (%)** are added: `prijs = (prijs_entiteit + opslag) × (1 + btw)`. With the VAT left empty, the extra can include the VAT, as before.
+- **Fixed price**: one price, or normal and low. The low tariff runs from a start to an end time in local time (default 23:00–07:00, past midnight when the end is before the start) and optionally all weekend (default on). The series is built per quarter hour, so times like 21:30 work.
+
+### Units
+The unit of the price entity is converted to the main currency per kWh: a subunit (`ct`, `c`, `cent`, `p`, `GBp`, `öre`, `øre`, `gr`, `rp`, `kop`) divides by 100, per MWh divides by 1000, per Wh multiplies by 1000. Other units count as the main currency per kWh. The same factor applies to the forecast, the recorder history, and the hourly statistics of the price entity, and to an export price entity with its own unit. The panel shows the current price after conversion.
+
+### Forecast prices
+- From an attribute: a list of intervals with a start (`start_date`, `start`, `start_time`, `startsAt`, `valid_from`, `hour`, `timestamp`, and similar), an optional end, and a price (`price_tax_included`, `value_inc_vat`, `total`, `per_kwh`, `price_per_kwh`, `price`, `value`, and similar). Without an end, the next start is the end.
+- Through an action, for integrations in Home Assistant itself without such an attribute: `nordpool.get_prices_for_date` (today and tomorrow), `tibber.get_prices`, `energyzero.get_energy_prices`, and `easyenergy.get_energy_usage_prices` (with VAT). Fetched hourly, and every 10 minutes until the first prices arrive. A response with several lists (Nord Pool areas, Tibber homes) uses the list whose current price matches the entity's state within 5%; a response that matches none is not used.
+- A power-of-ten difference between the forecast and the state (cents, 1e-7 units, per MWh) is corrected when the current price matches.
 
 With a price entity:
 - If it has a forecast attribute with prices per quarter hour or hour (like Zonneplan):
@@ -127,7 +143,7 @@ Each device has one of three types:
 - Of those three hours, the quietest one counts. This also filters out a device without its own meter that runs briefly at night.
 - Base load = the median of that over the last 7 nights.
 - Split into: continuous devices with a meter, and "unexplained". Devices with sessions aren't included.
-- **Rest of the house** on the dashboard = P1 total minus the added devices, so everything adds up to the whole house.
+- **Rest of the house** on the dashboard = the whole house (import plus own power used, see section 2) minus the added devices, so everything adds up to the whole house.
 
 ## 7. History from before the recorder
 
@@ -135,8 +151,9 @@ The recorder usually keeps readings for 10 days. For the period before that (up 
 
 - Energy per hour = the `change` of the counter's statistic (Home Assistant has already handled resets). For a power sensor: the hourly average.
 - Solar or grid per hour with the same rule as per measurement step, including the limit from the production counter. Because `min(Σa, Σb) ≥ Σ min(a, b)`, an hourly split never gives more solar than a finer one: no phantom solar, at most slightly too little.
-- Price per hour = the hourly average of the price entity. If it has no statistics, the cost sensor of the Energy dashboard (`<P1-import>_cost`) is used: the cost of that hour divided by the import of that hour.
-- Extra per kWh: also counted here.
+- Price per hour = the hourly average of the price entity, converted to the main currency per kWh. If it has no statistics, the cost sensor of the Energy dashboard (`<import counter>_cost`) is used: the cost of that hour divided by the import of that hour.
+- Extra per kWh and VAT: also counted here.
+- Home battery: the hourly changes of both battery counters are part of the own power per hour, with the same rules as per measurement step.
 - Export price: according to the choice in section 4. With **From your price entity**, the ratio of export to import price from the forecast.
 - Hours with more than 25 kWh aren't counted (charging on the road).
 - Sessions can't be recovered from hourly totals. That period only shows cost per hour, day, and month.

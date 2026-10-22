@@ -5,16 +5,21 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { meterIds, type ConfigResult, type ExportMode, type Hass, type Settings } from "./api";
 import { define, energyOnlyFilter, fire, priceFilter, radio, type EntityOption } from "./components";
-import { eur } from "./format";
+import { eur, priceFactor } from "./format";
 import { t } from "./i18n";
 import { shared } from "./styles";
 
 export type Section = "price" | "meters" | "solar" | "all";
-type MeterKey = "import_entity" | "export_entity" | "solar_entity";
+type MeterKey = "import_entity" | "export_entity" | "solar_entity" | "battery_charge_entity" | "battery_discharge_entity";
 
-/** Solar and export only matter with an export or solar counter. */
+/** Solar and export only matter with an export or solar counter, or a home battery. */
 export function needsSolar(s: Settings): boolean {
-  return meterIds(s.export_entity).length > 0 || meterIds(s.solar_entity).length > 0;
+  return [s.export_entity, s.solar_entity, s.battery_charge_entity, s.battery_discharge_entity].some((m) => meterIds(m).length > 0);
+}
+
+/** A home battery needs both counters, or neither. */
+function batteryValid(s: Settings): boolean {
+  return (meterIds(s.battery_charge_entity).length > 0) === (meterIds(s.battery_discharge_entity).length > 0);
 }
 
 /**
@@ -40,7 +45,10 @@ export function withAnswers(s: Settings): Settings {
 
 /** What the backend needs: answers for sections that do not apply are filled with harmless values. */
 export function toSave(s: Settings): Settings {
-  const out: Settings = { ...s, import_entity: meterIds(s.import_entity), export_entity: meterIds(s.export_entity), solar_entity: meterIds(s.solar_entity) };
+  const out: Settings = {
+    ...s, import_entity: meterIds(s.import_entity), export_entity: meterIds(s.export_entity), solar_entity: meterIds(s.solar_entity),
+    battery_charge_entity: meterIds(s.battery_charge_entity), battery_discharge_entity: meterIds(s.battery_discharge_entity),
+  };
   if (!needsSolar(out)) out.solar_mode = out.solar_mode ?? "export";
   // The export price is only asked with "What you would otherwise have received": drop half answers.
   if (out.solar_mode !== "export" && ((out.export_price_mode === "fixed" && out.export_price_fixed == null)
@@ -84,6 +92,7 @@ export class EdSettingsForm extends LitElement {
       .meter { display: flex; gap: 4px; align-items: flex-start; }
       .meter ed-entity-select { flex: 1; min-width: 0; }
       .meter button.icon { margin-top: 26px; }
+      .check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
       h3 { margin: 4px 0 -8px; }
       section.card { display: grid; gap: 20px; padding: 20px 24px 24px; }
       section.card h2 { margin: 0; }
@@ -128,7 +137,7 @@ export class EdSettingsForm extends LitElement {
   valid(s: Settings): boolean {
     const show = (x: Section) => this.section === "all" || this.section === x;
     if (show("price") && !this._priceValid(s)) return false;
-    if (show("meters") && meterIds(s.import_entity).length === 0) return false;
+    if (show("meters") && (meterIds(s.import_entity).length === 0 || !batteryValid(s))) return false;
     if (show("solar") && needsSolar(s) && !this._solarValid(s)) return false;
     return true;
   }
@@ -167,10 +176,21 @@ export class EdSettingsForm extends LitElement {
       ${help ? html`<span class="help">${help}</span>` : nothing}</label>`;
   }
 
+  /** Price of a price entity now, per kWh in the main currency (ct/kWh and €/MWh are converted). */
   private _state(id: string | null | undefined): number | null {
     const st = id ? this.hass.states[id] : undefined;
     const n = st ? Number(st.state) : NaN;
-    return Number.isFinite(n) ? n : null;
+    return Number.isFinite(n) ? n * priceFactor(st?.attributes.unit_of_measurement) : null;
+  }
+
+  private _unit(id: string | null | undefined): string | null {
+    const unit = id ? this.hass.states[id]?.attributes.unit_of_measurement : undefined;
+    return typeof unit === "string" && priceFactor(unit) !== 1 ? unit : null;
+  }
+
+  private _time(label: string, value: string, onChange: (v: string) => void): TemplateResult {
+    return html`<label class="field"><span class="lbl">${label} *</span>
+      <input class="input" type="time" step="900" .value=${value} @change=${(e: Event) => onChange((e.target as HTMLInputElement).value)} /></label>`;
   }
 
   render() {
@@ -185,11 +205,12 @@ export class EdSettingsForm extends LitElement {
       ${(all && needsSolar(s)) || this.section === "solar" ? part(t("sf.h.solar"), this._solar(s)) : nothing}`;
   }
 
-  /** Grid price of this moment with the answers so far: entity (plus markup) or the normal tariff. */
+  /** Grid price of this moment with the answers so far: entity (plus markup and VAT) or the normal tariff. */
   private _gridPrice(s: Settings): number | null {
     if (s.contract === "fixed") return s.price_normal ?? null;
     const raw = this._state(s.price_entity);
-    return raw === null ? null : raw + (this._extra ? s.price_markup ?? 0 : 0);
+    if (raw === null) return null;
+    return this._extra ? (raw + (s.price_markup ?? 0)) * (1 + (s.price_vat ?? 0) / 100) : raw;
   }
 
   private _price(s: Settings): TemplateResult {
@@ -200,10 +221,18 @@ export class EdSettingsForm extends LitElement {
     const raw = this._state(s.price_entity);
     const p = (v: number | null | undefined) => eur(v ?? null, 3);
     const markup = s.price_markup ?? null;
+    const vat = s.price_vat ?? 0;
     const exFull = raw !== null ? t("ex.full_yes", { price: p(raw) }) : t("ex.full_yes", { price: p(0.29) });
-    const exExtra = raw !== null
-      ? t("ex.full_no", { raw: p(raw), markup: markup !== null && markup > 0 ? p(markup) : t("ex.markup"), total: markup !== null && markup > 0 ? p(raw + markup) : "…" })
-      : t("ex.full_no", { raw: p(0.09), markup: p(0.17), total: p(0.26) });
+    const known = raw !== null && markup !== null && markup > 0;
+    const exExtra = raw === null
+      ? t("ex.full_no", { raw: p(0.09), markup: p(0.17), total: p(0.26) })
+      : vat > 0
+        ? t("ex.full_no_vat", { raw: p(raw), markup: known ? p(markup) : t("ex.markup"), vat, total: known ? p((raw + markup) * (1 + vat / 100)) : "…" })
+        : t("ex.full_no", { raw: p(raw), markup: known ? p(markup) : t("ex.markup"), total: known ? p(raw + markup) : "…" });
+    const unit = this._unit(s.price_entity);
+    const forecast = !raw || !saved ? "" : st.price_from_action
+      ? t("sf.forecast_action", { action: st.price_attribute ?? "" })
+      : t(st.price_attribute ? "sf.forecast_found" : "sf.forecast_none");
     const normal = s.price_normal ?? null;
     const low = s.price_low ?? null;
     return html`
@@ -223,17 +252,23 @@ export class EdSettingsForm extends LitElement {
               @value-changed=${(e: CustomEvent) => this._set({ price_entity: e.detail.value })}></ed-entity-select>
             ${s.price_entity
               ? html`<div class="help status"><ha-icon icon="mdi:information-outline"></ha-icon><span>
-                  ${raw === null ? t("sf.no_number") : t("ex.now", { price: eur(raw, 3) })}${raw !== null && saved ? ` · ${t(st.price_attribute ? "sf.forecast_found" : "sf.forecast_none")}` : ""}</span></div>`
+                  ${raw === null ? t("sf.no_number") : t("ex.now", { price: eur(raw, 3) })}${unit ? ` · ${t("sf.unit", { unit })}` : ""}${forecast ? ` · ${forecast}` : ""}</span></div>`
               : nothing}
             <div class="q">
               <span class="title">${t("sf.full")} *</span>
               <div class="radios" role="radiogroup" aria-label=${t("sf.full")}>
-                ${radio(this._extra === false, t("sf.full_yes"), t("sf.full_yes_text"), () => { this._extra = false; this._set({ price_markup: 0 }); }, exFull)}
+                ${radio(this._extra === false, t("sf.full_yes"), t("sf.full_yes_text"), () => { this._extra = false; this._set({ price_markup: 0, price_vat: null }); }, exFull)}
                 ${radio(this._extra === true, t("sf.full_no"), t("sf.full_no_text"), () => { this._extra = true; this._set({ price_markup: s.price_markup ? s.price_markup : null }); }, exExtra)}
               </div>
             </div>
             ${this._extra
-              ? this._money(t("sf.markup"), s.price_markup, t("sf.markup_help"), (v) => this._set({ price_markup: v }))
+              ? html`<div class="row wrap">
+                  ${this._money(t("sf.markup"), s.price_markup, t("sf.markup_help"), (v) => this._set({ price_markup: v }))}
+                  <label class="field"><span class="lbl">${t("sf.vat")}</span>
+                    <input class="input" inputmode="decimal" .value=${s.price_vat == null ? "" : String(s.price_vat)}
+                      @change=${(e: Event) => this._set({ price_vat: num((e.target as HTMLInputElement).value) })} />
+                    <span class="help">${t("sf.vat_help")}</span></label>
+                </div>`
               : nothing}
           </div>`
         : nothing}
@@ -242,7 +277,7 @@ export class EdSettingsForm extends LitElement {
             <div class="q">
               <span class="title">${t("sf.tariffs")} *</span>
               <div class="radios" role="radiogroup" aria-label=${t("sf.tariffs")}>
-                ${radio(this._dual === false, t("sf.one"), t("sf.one_text"), () => { this._dual = false; this._set({ price_low: null }); },
+                ${radio(this._dual === false, t("sf.one"), t("sf.one_text"), () => { this._dual = false; this._set({ price_low: null, low_start: null, low_end: null, low_weekend: null }); },
                   t("ex.one", { price: eur(normal ?? 0.29, 2) }))}
                 ${radio(this._dual === true, t("sf.two"), t("sf.two_text"), () => { this._dual = true; this._set({}); },
                   t("ex.two", { normal: eur(normal ?? 0.31, 2), low: eur(low ?? 0.27, 2) }))}
@@ -251,7 +286,17 @@ export class EdSettingsForm extends LitElement {
             ${this._dual === false ? this._money(t("sf.price"), s.price_normal, "", (v) => this._set({ price_normal: v })) : nothing}
             ${this._dual
               ? html`<div class="row wrap">${this._money(t("set.normal"), s.price_normal, "", (v) => this._set({ price_normal: v }))}
-                  ${this._money(t("set.low"), s.price_low, "", (v) => this._set({ price_low: v }))}</div>`
+                  ${this._money(t("set.low"), s.price_low, "", (v) => this._set({ price_low: v }))}</div>
+                <div class="q">
+                  <span class="title">${t("sf.low_hours")}</span>
+                  <div class="row wrap">
+                    ${this._time(t("sf.low_start"), s.low_start ?? "23:00", (v) => this._set({ low_start: v || null }))}
+                    ${this._time(t("sf.low_end"), s.low_end ?? "07:00", (v) => this._set({ low_end: v || null }))}
+                  </div>
+                  <label class="check"><input type="checkbox" .checked=${s.low_weekend ?? true}
+                    @change=${(e: Event) => this._set({ low_weekend: (e.target as HTMLInputElement).checked })} />${t("sf.low_weekend")}</label>
+                  <span class="help">${t("set.low_help")}</span>
+                </div>`
               : nothing}
           </div>`
         : nothing}`;
@@ -283,7 +328,9 @@ export class EdSettingsForm extends LitElement {
     return html`
       ${this._meterList("import_entity", t("set.import"), t("sf.import_help"), true)}
       ${this._meterList("export_entity", t("set.export"), t("sf.export_help"), false)}
-      ${this._meterList("solar_entity", t("set.solar"), t("sf.solar_help"), false)}`;
+      ${this._meterList("solar_entity", t("set.solar"), t("sf.solar_help"), false)}
+      ${this._meterList("battery_charge_entity", t("set.battery_charge"), "", false)}
+      ${this._meterList("battery_discharge_entity", t("set.battery_discharge"), t("sf.battery_help"), false)}`;
   }
 
   private _solar(s: Settings): TemplateResult {
