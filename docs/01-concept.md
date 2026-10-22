@@ -18,7 +18,7 @@ Home Assistant richt zich op drie soorten gebruikers; het ontwerp moet voor alle
 
 ## Wat er al bestaat (verkenning 21 okt 2026)
 
-| Project | Wat het doet | Wat ontbreekt voor ons doel |
+| Project | Wat het doet | Wat ontbreekt voor dit doel |
 |---|---|---|
 | Standaard Energy-dashboard | Verbruik en kosten op huisniveau, apparaten in kWh | Geen kosten per apparaat of per sessie |
 | **WashData** (HACS, 1,1k sterren, AGPL) | Cycli van wasmachine, droger, vaatwasser herkennen, programma's leren, energie en kosten per cyclus, eigen sidebar-paneel | Alleen apparaten met cycli; geen laadsessies, geen sluipverbruik, geen huisbreed overzicht, geen eerlijke zonverrekening |

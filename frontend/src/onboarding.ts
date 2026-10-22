@@ -7,7 +7,7 @@ import { define, fire } from "./components";
 import { num } from "./format";
 import { t } from "./i18n";
 import "./settings-form";
-import { needsSolar, toSave, withAnswers } from "./settings-form";
+import { needsSolar, toSave } from "./settings-form";
 import { shared } from "./styles";
 import type { Ctx } from "./views";
 
@@ -151,7 +151,8 @@ export class EdOnboarding extends LitElement {
 
   private _begin(after: "scan" | "advanced") {
     this._after = after;
-    this._s = withAnswers(this.ctx.config.settings);
+    const cur = this.ctx.config.settings;
+    this._s = { ...cur, contract: null, solar_mode: null, export_price_mode: null, price_markup: null, price_low: null };
     this._hadMeters = meterIds(this._s.import_entity).length > 0;
     this._error = "";
     this._stage = "price";

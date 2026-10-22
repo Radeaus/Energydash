@@ -103,7 +103,7 @@ Ook de terugleverprijs is een keuze van de gebruiker (alleen gevraagd als er een
 
 (De backend kent ook `same`, terugleverprijs = stroomprijs; het paneel biedt die keuze sinds 1.2.6 niet meer aan. Bij een vaste prijs is de terugleverprijs altijd een vast bedrag.)
 
-Instellingen van vóór 1.2.5 hebben deze keuze nog niet en houden hun oude gedrag: met een terugleverprijs-entiteit "Uit een andere entiteit", anders "Uit je prijs-entiteit" (bij een vast tarief het vaste bedrag, of 0).
+Instellingen van vóór 1.2.5 hebben deze keuze nog niet en houden het oude gedrag: met een terugleverprijs-entiteit "Uit een andere entiteit", anders "Uit je prijs-entiteit" (bij een vast tarief het vaste bedrag, of 0).
 
 ## 5. Sessies
 

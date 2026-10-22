@@ -51,7 +51,7 @@ Wordt getoond in de wizard en bij het apparaat. Elke regel: status (ok / beperki
 
 | Check | Voorbeeld ok | Voorbeeld beperking |
 |---|---|---|
-| Eenheid en soort | kWh, `total_increasing` | W: "we rekenen de kWh zelf uit" |
+| Eenheid en soort | kWh, `total_increasing` | W: "dan wordt de kWh uit het vermogen berekend" |
 | Soort teller | loopt altijd op | begint per sessie op 0 (herkend, geen probleem) |
 | Verversing (gemeten) | elke ~10 s | elke ~5 min: "begin/einde tot 5 min onnauwkeurig" |
 | Onderbrekingen | geen | 2× onbeschikbaar: "overbrugd" |

@@ -69,7 +69,7 @@ De reset en herberekening zijn ook acties voor automations of *Ontwikkelhulpmidd
 
 ### Bekende beperkingen in 1.0
 - Terugrekenen kan alleen over de recorder-historie (standaard 10 dagen); daarvoor zijn er geen gedetailleerde gegevens.
-- Twee apparaten die tegelijk draaien krijgen elk `min(dE, dImport)` tegen dezelfde P1-import. Bij veel zon kan de som van hun netstroom dan iets hoger uitvallen dan de P1-import. "Rest van het huis" vangt dat op (nooit negatief).
+- Twee apparaten die tegelijk draaien krijgen elk `min(dE, dImport)` tegen dezelfde P1-import. Bij veel zon kan de som van de netstroom dan iets hoger uitvallen dan de P1-import. "Rest van het huis" vangt dat op (nooit negatief).
 - De laatste meetstap bij loskoppelen van de laadpaal kan verloren gaan (de sessieteller springt naar 0). Dat geldt ook voor de leverancier zelf.
 - De integratie is niet getest tegen de HA-testsuite (`pytest-homeassistant-custom-component`); de rekenkern, het terugrekenen en de herkenning wel (25 tests). Daarom eerst op de test-VM.
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.7 – 22 oktober 2026
+
+### Snelle start en instellingen
+- De snelle start begint zonder gekozen antwoorden. Vervolgvragen (prijs-entiteit, opslag, tarieven) verschijnen pas als je een keuze maakt.
+- De keuzes tussen prijs uit een entiteit en vaste prijs tonen altijd een voorbeeld van wat ze betekenen ("Bijv. 14:00 € 0,24 · 14:15 € 0,31" tegenover "Bijv. altijd € 0,29 per kWh"). De actuele prijs van je entiteit staat onder het veld.
+- Zonnestroom: de voorbeelden zijn rekenregels: "Zon = terugleverprijs = € 0,19", "Zon = € 0,00", "Zon = stroomprijs = € 0,30".
+- De vraag waar de terugleverprijs vandaan komt verschijnt alleen nog onder "Wat je anders had gekregen", want alleen daar is hij nodig.
+
 ## 1.2.6 – 22 oktober 2026
 
 ### Snelle start en instellingen
