@@ -13,6 +13,7 @@ import { defaultIcon, type Ctx } from "./views";
 
 type Stage = "start" | "price" | "meters" | "solar" | "scan" | "list" | "saving" | "calc";
 type SetupStep = "price" | "meters" | "solar";
+type WizardStep = SetupStep | "devices" | "calc";
 const CALC_SKIP_AFTER_S = 20; // offer to go ahead while long recalculations still run
 const CALC_LEAVE_MS = 1200; // let the last check mark show before switching to the dashboard
 const SCAN_STEPS = ["ob.scan.prefs", "ob.scan.meters", "ob.scan.history"];
@@ -63,7 +64,11 @@ export class EdOnboarding extends LitElement {
   static styles = [
     shared,
     css`
-      :host { display: block; max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+      :host { display: block; }
+      .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+      .bar { position: sticky; top: 56px; z-index: 2; height: 4px; background: var(--ed-line); }
+      .bar i { display: block; height: 100%; background: var(--ed-pri); transition: width 0.4s; }
+      @media (prefers-reduced-motion: reduce) { .bar i, .progress i { transition: none; } }
       .stack { display: grid; gap: 16px; }
       .hero { text-align: center; display: grid; justify-items: center; gap: 8px; padding: 32px 16px; }
       .hero > ha-icon { --mdc-icon-size: 64px; color: var(--ed-pri); margin-bottom: 8px; }
@@ -136,6 +141,35 @@ export class EdOnboarding extends LitElement {
     return this._s && needsSolar(this._s) ? ["price", "meters", "solar"] : ["price", "meters"];
   }
 
+  // All steps of the wizard, so the count and the progress bar cover the whole way to the dashboard.
+  private get _wizardSteps(): WizardStep[] {
+    return this._after === "scan" ? [...this._setupSteps, "devices", "calc"] : this._setupSteps;
+  }
+
+  private get _wizardStep(): WizardStep | null {
+    const s = this._stage;
+    if (s === "start") return null;
+    if (s === "scan" || s === "list" || s === "saving") return "devices";
+    return s;
+  }
+
+  private _count(): TemplateResult | typeof nothing {
+    const step = this._wizardStep;
+    const steps = this._wizardSteps;
+    return step ? html`<div class="count">${t("ob.step", { n: steps.indexOf(step) + 1, total: steps.length })}</div>` : nothing;
+  }
+
+  private _bar(): TemplateResult | typeof nothing {
+    const step = this._wizardStep;
+    if (!step) return nothing;
+    const steps = this._wizardSteps;
+    const i = steps.indexOf(step);
+    const part = step === "calc" ? this._doneIds().size / Math.max(this._added.length, 1) : 1;
+    const pct = Math.round(((i + part) / steps.length) * 100);
+    return html`<div class="bar" role="progressbar" aria-label=${t("ob.step", { n: i + 1, total: steps.length })}
+      aria-valuemin="0" aria-valuemax="100" aria-valuenow=${pct}><i style="width:${pct}%"></i></div>`;
+  }
+
   private _begin(after: "scan" | "advanced") {
     this._after = after;
     const cur = this.ctx.config.settings;
@@ -181,7 +215,7 @@ export class EdOnboarding extends LitElement {
     const intro = step === "meters" && !this._hadMeters ? t("ob.meters_none") : t(`ob.${step}_text`);
     return html`<div class="card stack">
         <div>
-          <div class="count">${t("ob.step", { n: steps.indexOf(step) + 1, total: steps.length })}</div>
+          ${this._count()}
           <h2>${t(`ob.${step}`)}</h2>
           <p class="muted">${intro}</p>
         </div>
@@ -277,7 +311,7 @@ export class EdOnboarding extends LitElement {
       : this._stage === "scan" ? this._renderScan()
       : this._stage === "calc" ? this._renderCalc()
       : this._renderList();
-    return html`<div class="stack">${err}${body}</div>`;
+    return html`${this._bar()}<div class="wrap stack">${err}${body}</div>`;
   }
 
   private _renderStart() {
@@ -297,7 +331,7 @@ export class EdOnboarding extends LitElement {
 
   private _renderScan() {
     return html`<div class="card stack" aria-live="polite">
-      <h2>${t("ob.scanning")}</h2>
+      <div>${this._count()}<h2>${t("ob.scanning")}</h2></div>
       <div class="steps">${SCAN_STEPS.map((key, i) => {
         const done = i < this._scanStep;
         const busy = i === this._scanStep;
@@ -353,6 +387,7 @@ export class EdOnboarding extends LitElement {
     const items = this._items;
     if (!items.length) {
       return html`<div class="card hero">
+        ${this._count()}
         <ha-icon icon="mdi:magnify-close"></ha-icon>
         <h2>${t("ob.none")}</h2>
         <p class="muted">${t("ob.none_text")}</p>
@@ -369,6 +404,7 @@ export class EdOnboarding extends LitElement {
     const saving = this._stage === "saving";
     return html`
       <div>
+        ${this._count()}
         <h2>${sure.length ? t(sure.length === 1 ? "ob.found_one" : "ob.found", { n: sure.length }) : t("ob.found_unsure", { n: items.length })}</h2>
         <p class="muted">${sure.length ? t("ob.found_text") : t("ob.found_unsure_text")}</p>
       </div>
@@ -392,6 +428,7 @@ export class EdOnboarding extends LitElement {
     const slow = (this._now - this._calcSince) / 1000 > CALC_SKIP_AFTER_S;
     return html`<div class="card stack" aria-live="polite">
         <div>
+          ${this._count()}
           <h2>${n === 1 ? t("ob.done_one") : t("ob.done", { n })}</h2>
           <p class="muted">${t("ob.calc_text")}</p>
         </div>
