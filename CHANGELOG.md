@@ -4,7 +4,7 @@
 
 ### New
 
-- Energydash has its own icon: a green lightning bolt with a euro coin.
+- Energydash has its own icon: a white lightning bolt on green.
 
 ### Improved
 
