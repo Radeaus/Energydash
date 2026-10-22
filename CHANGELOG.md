@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0 – 22 oktober 2026
+
+### Rekenen
+- Sluipverbruik: apparaten met sessies (laadpaal, auto) tellen niet meer mee. Per nacht telt het rustigste uur tussen 02:00 en 05:00, daarna de mediaan over 7 nachten. Voorheen werd een nachtelijke laadsessie als sluipverbruik gezien.
+- Historie tot een jaar terug: "Opnieuw berekenen" vult de periode van vóór de recorder (meestal 10 dagen) aan met de langetermijnstatistieken van Home Assistant, per uur. Zonder sessies, wel kosten, zon en net per uur, dag en maand.
+
+### Paneel
+- Dashboard: nieuwe weergave **Jaar**, met kosten per maand.
+- Nieuwe kaart **Gemiddelde stroomprijs**: wat je gemiddeld per kWh uit het net betaalde in de gekozen periode. Vervangt "Betaald per kWh".
+- "Bespaard door zon" legt nu uit wat het percentage betekent: zoveel goedkoper dan als alles uit het net was gekomen.
+- Getallen in de cirkeldiagrammen staan weer netjes in het midden.
+
+**Na bijwerken:** Instellingen → **Alles opnieuw berekenen**, dan worden het sluipverbruik en de oudere historie opnieuw opgebouwd.
+
 ## 1.1.0 – 22 oktober 2026
 
 ### Rekenen

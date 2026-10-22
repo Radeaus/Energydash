@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import Any
 
-from homeassistant.components.recorder import get_instance, history
+from homeassistant.components.recorder import get_instance, history, statistics
 from homeassistant.core import HomeAssistant
 
 from .replay import INVALID, StepLookup, count_invalid, numeric_series, text_series  # noqa: F401  (re-exported)
@@ -42,6 +42,36 @@ async def async_get_states(
         )
     )
     return {k: list(v) for k, v in result.items()}
+
+
+async def async_get_hourly(
+    hass: HomeAssistant,
+    entity_ids: list[str],
+    start: datetime,
+    end: datetime,
+    kind: str,
+) -> dict[str, dict[datetime, float]]:
+    """Hourly long-term statistics: kind "change" (energy in kWh) or "mean" (prices, power in W)."""
+    ids = {e for e in entity_ids if e}
+    if not ids or end <= start:
+        return {}
+    recorder = get_instance(hass)
+    await recorder.async_db_ready
+    rows = await recorder.async_add_executor_job(
+        statistics.statistics_during_period,
+        hass, start, end, ids, "hour", {"energy": "kWh", "power": "W"}, {kind},
+    )
+    out: dict[str, dict[datetime, float]] = {}
+    for eid, items in rows.items():
+        series = out.setdefault(eid, {})
+        for row in items:
+            value = row.get(kind)
+            if value is None:
+                continue
+            ts = row["start"]
+            hour = ts if isinstance(ts, datetime) else datetime.fromtimestamp(float(ts), tz=timezone.utc)
+            series[hour] = float(value)
+    return out
 
 
 def keep_days(hass: HomeAssistant) -> int:

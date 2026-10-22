@@ -135,10 +135,12 @@ export interface Preview {
   sessions: { start: string; end: string; minutes: number; kwh: number | null }[];
 }
 
+export type Period = "week" | "month" | "year";
+
 export interface Summary {
   first_day: string;
   last_day: string;
-  period: "week" | "month";
+  period: Period;
   days: { date: string; series: Record<string, Numbers> }[];
   totals: Record<string, Numbers>;
   has_house: boolean;
@@ -196,7 +198,7 @@ export const api = {
   recalculate: (h: Hass, device_id?: string) =>
     h.callWS({ type: "energydash/recalculate", ...(device_id ? { device_id } : {}) }),
   sessions: (h: Hass) => h.callWS<{ sessions: Session[]; solar_mode: SolarMode }>({ type: "energydash/sessions", limit: 300 }),
-  summary: (h: Hass, period: "week" | "month", offset: number) =>
+  summary: (h: Hass, period: Period, offset: number) =>
     h.callWS<Summary>({ type: "energydash/summary", period, offset }),
   baseload: (h: Hass) => h.callWS<Baseload>({ type: "energydash/baseload" }),
   steps: (h: Hass, device_id: string) => h.callWS<{ steps: StepLog[]; tracker: Record<string, unknown> | null }>({ type: "energydash/steps", device_id }),

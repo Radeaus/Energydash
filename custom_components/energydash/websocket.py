@@ -215,7 +215,7 @@ def ws_sessions(hass, connection, msg):
 
 @websocket_api.websocket_command({
     vol.Required("type"): "energydash/summary",
-    vol.Required("period"): vol.In(["week", "month"]),
+    vol.Required("period"): vol.In(["week", "month", "year"]),
     vol.Optional("offset", default=0): int,
 })
 @callback
@@ -228,15 +228,20 @@ def ws_summary(hass, connection, msg):
         last = today - timedelta(days=7 * msg["offset"])
         first = last - timedelta(days=6)
         prev_first = first - timedelta(days=7)
-    else:
+    elif msg["period"] == "month":
         month = _add_months(today.replace(day=1), -msg["offset"])
         first = month
         nxt = _add_months(month, 1)
         last = min(nxt - timedelta(days=1), today)
         prev_first = _add_months(month, -1)
+    else:
+        first = date(today.year - msg["offset"], 1, 1)
+        last = min(date(first.year, 12, 31), today)
+        prev_first = date(first.year - 1, 1, 1)
     days = (last - first).days + 1
-    result = coord.agg.summary(coord.devices, first, days, coord.solar_mode)
-    prev = coord.agg.summary(coord.devices, prev_first, days, coord.solar_mode)
+    by_month = msg["period"] == "year"
+    result = coord.agg.summary(coord.devices, first, days, coord.solar_mode, by_month)
+    prev = coord.agg.summary(coord.devices, prev_first, days, coord.solar_mode, by_month)
     result["previous_total"] = prev["totals"].get("_house", {}).get("cost")
     result["last_day"] = last.isoformat()
     result["period"] = msg["period"]

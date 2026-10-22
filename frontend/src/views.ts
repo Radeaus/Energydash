@@ -1,7 +1,7 @@
 // The four tabs: Dashboard, Sessies, Sluipverbruik, Apparaten (docs/04 §4).
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
-import { api, sessionCost, type Baseload, type ConfigResult, type Device, type Hass, type Session, type SolarMode, type Summary } from "./api";
+import { api, sessionCost, type Baseload, type ConfigResult, type Device, type Hass, type Period, type Session, type SolarMode, type Summary } from "./api";
 import { colors, conic, dateTime, day, deviceColor, eur, minutesBetween, num, pct, time } from "./format";
 import { t } from "./i18n";
 import { shared } from "./styles";
@@ -49,7 +49,8 @@ const cardCss = css`
   .donut-row { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
   .donut { width: 150px; height: 150px; border-radius: 50%; position: relative; flex: none; }
   .donut::after { content: ""; position: absolute; inset: 26px; border-radius: 50%; background: var(--ed-card); }
-  .donut .mid { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; text-align: center; font-size: 18px; }
+  .donut .mid { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-size: 18px; line-height: 1.2; }
+  .donut .mid .small { font-size: 12px; }
   .legend { display: grid; gap: 6px; flex: 1; min-width: 180px; }
   .legend .row { font-size: 14px; gap: 8px; }
   .legend .v { margin-left: auto; font-variant-numeric: tabular-nums; }
@@ -84,7 +85,7 @@ const cardCss = css`
 // ------------------------------------------------------------------ dashboard
 export class EdDashboard extends LitElement {
   declare ctx: Ctx;
-  declare _period: "week" | "month";
+  declare _period: Period;
   declare _offset: number;
   declare _data: Summary | null;
   declare _hoverDay: number | null;
@@ -136,11 +137,11 @@ export class EdDashboard extends LitElement {
     const mode = this.ctx.config.settings.solar_mode;
     const head = html`<div class="toolbar">
       <div class="seg-btns" role="group">
-        ${(["week", "month"] as const).map((p) => html`<button aria-pressed=${this._period === p} @click=${() => { this._period = p; this._offset = 0; this._hoverDay = null; }}>${t(p === "week" ? "d.week" : "d.month")}</button>`)}
+        ${(["week", "month", "year"] as const).map((p) => html`<button aria-pressed=${this._period === p} @click=${() => { this._period = p; this._offset = 0; this._hoverDay = null; }}>${t(`d.${p}`)}</button>`)}
       </div>
       <button class="icon" aria-label=${t("d.prev")} @click=${() => { this._offset += 1; this._hoverDay = null; }}><ha-icon icon="mdi:chevron-left"></ha-icon></button>
       <button class="icon" aria-label=${t("d.next")} ?disabled=${this._offset === 0} @click=${() => { this._offset = Math.max(0, this._offset - 1); this._hoverDay = null; }}><ha-icon icon="mdi:chevron-right"></ha-icon></button>
-      ${d ? html`<div><h2 style="margin:0">${day(d.first_day, { day: "numeric", month: "long" })} – ${day(d.last_day, { day: "numeric", month: "long", year: "numeric" })}</h2></div>` : nothing}
+      ${d ? html`<div><h2 style="margin:0">${d.period === "year" ? `${d.first_day.slice(0, 4)}` : `${day(d.first_day, { day: "numeric", month: "long" })} – ${day(d.last_day, { day: "numeric", month: "long", year: "numeric" })}`}</h2></div>` : nothing}
     </div>`;
     if (this._error) return html`<div class="page">${head}<div class="alert bad"><ha-icon icon="mdi:alert-circle"></ha-icon>${t("c.error", { msg: this._error })}</div></div>`;
     if (!d) return html`<div class="page">${head}<p class="muted">${t("c.loading")}</p></div>`;
@@ -149,7 +150,7 @@ export class EdDashboard extends LitElement {
     const series = [...ids, ...(d.has_house ? ["_rest"] : [])];
     const house = d.totals["_house"];
     const total = house?.cost ?? 0;
-    const daysWithData = d.days.length;
+    const daysWithData = Math.round((Date.parse(d.last_day) - Date.parse(d.first_day)) / 86_400_000) + 1;
     const c = colors(this.ctx.dark);
     const zonKwh = house?.zon ?? 0;
     const kwh = house?.kwh ?? 0;
@@ -157,12 +158,15 @@ export class EdDashboard extends LitElement {
     const delta = prev && prev > 0.01 && d.has_house ? Math.round(((total - prev) / prev) * 100) : null;
     const below = house && house.all_net > 0.001 ? Math.round((1 - house.cost / house.all_net) * 100) : 0;
     const saved = house ? house.all_net - house.cost : 0;
+    const gridKwh = house?.net ?? 0;
+    // Average price of the power actually bought: grid cost / grid kWh, weighted by when it was bought.
+    const gridPrice = gridKwh > 0.01 ? house!.net_cost / gridKwh : null;
 
     const kpis = [
-      { label: t(d.has_house ? "d.kpi_total" : "d.kpi_devices"), value: eur(total), sub: delta === null ? "" : `${delta <= 0 ? "↓" : "↑"} ${Math.abs(delta)}% ${t(this._period === "week" ? "d.vs_week" : "d.vs_month")}` },
+      { label: t(d.has_house ? "d.kpi_total" : "d.kpi_devices"), value: eur(total), sub: delta === null ? "" : `${delta <= 0 ? "↓" : "↑"} ${Math.abs(delta)}% ${t(`d.vs_${this._period}`)}` },
       { label: t("d.kpi_avg_day"), value: eur(total / Math.max(daysWithData, 1)), sub: t("d.over_days", { n: daysWithData }) },
-      { label: t("d.kpi_price"), value: house?.price_per_kwh != null ? eur(house.price_per_kwh, 3) : "—", sub: below > 0 ? t("d.below_grid", { p: below }) : t("d.at_grid") },
-      { label: t("d.kpi_saved"), value: mode === "grid" ? "—" : eur(saved), sub: mode === "grid" ? t("d.zon_as_grid") : t("d.zon_used", { kwh: num(zonKwh, 0) }) },
+      { label: t("d.kpi_grid_price"), value: gridPrice !== null ? eur(gridPrice, 3) : "—", sub: t("d.grid_price_sub", { kwh: num(gridKwh, 0) }) },
+      { label: t("d.kpi_saved"), value: mode === "grid" ? "—" : eur(saved), sub: mode === "grid" ? t("d.zon_as_grid") : below > 0 ? t("d.zon_used_below", { kwh: num(zonKwh, 0), p: below }) : t("d.zon_used", { kwh: num(zonKwh, 0) }) },
     ];
 
     const money = series.map((id) => ({ id, ...deviceInfo(this.ctx, id), v: d.totals[id]?.cost ?? 0 }));
@@ -181,7 +185,7 @@ export class EdDashboard extends LitElement {
         <div class="card">
           <h3>${t("d.money")}</h3>
           <div class="donut-row">
-            <div class="donut" role="img" aria-label=${money.map((m) => `${m.name} ${eur(m.v)}`).join(", ")} style="background:${conic(money.map((m) => ({ v: m.v, color: m.color })))}"><div class="mid">${eur(total, 0)}</div></div>
+            <div class="donut" role="img" aria-label=${money.map((m) => `${m.name} ${eur(m.v)}`).join(", ")} style="background:${conic(money.map((m) => ({ v: m.v, color: m.color })))}"><div class="mid"><span>${eur(total, 0)}</span></div></div>
             <div class="legend">${money.map((m) => html`<div class="row"><span class="swatch" style="background:${m.color}"></span><span>${m.name}</span><span class="v">${eur(m.v)}</span><span class="p">${pct(Math.max(m.v, 0), posTotal)}%</span></div>`)}</div>
           </div>
           ${d.has_house ? html`<p class="muted small" style="margin-top:12px">${t("d.rest_note")}</p>` : nothing}
@@ -189,7 +193,7 @@ export class EdDashboard extends LitElement {
         <div class="card">
           <h3>${t("d.source")}</h3>
           <div class="donut-row">
-            <div class="donut" role="img" aria-label="${t("d.own_solar")} ${pct(zonKwh, kwh)}%, ${t("d.grid")} ${100 - pct(zonKwh, kwh)}%" style="background:${conic([{ v: zonKwh, color: c.zon }, { v: kwh - zonKwh, color: c.net }])}"><div class="mid">${pct(zonKwh, kwh)}%<br /><span class="small muted">${t("s.solar").toLowerCase()}</span></div></div>
+            <div class="donut" role="img" aria-label="${t("d.own_solar")} ${pct(zonKwh, kwh)}%, ${t("d.grid")} ${100 - pct(zonKwh, kwh)}%" style="background:${conic([{ v: zonKwh, color: c.zon }, { v: kwh - zonKwh, color: c.net }])}"><div class="mid"><span>${pct(zonKwh, kwh)}%</span><span class="small muted">${t("s.solar").toLowerCase()}</span></div></div>
             <div class="legend">
               <div class="row"><span class="swatch" style="background:${c.zon}"></span><span>${t("d.own_solar")}</span><span class="v">${num(zonKwh, 0)} kWh</span><span class="p">${pct(zonKwh, kwh)}%</span></div>
               <div class="row"><span class="swatch" style="background:${c.net}"></span><span>${t("d.grid")}</span><span class="v">${num(kwh - zonKwh, 0)} kWh</span><span class="p">${100 - pct(zonKwh, kwh)}%</span></div>
@@ -210,10 +214,12 @@ export class EdDashboard extends LitElement {
     const hd = this._hoverDay ?? d.days.length - 1;
     const sel = d.days[hd];
     const week = this._period === "week";
+    const year = this._period === "year";
+    const label = (iso: string) => (year ? day(iso, { month: "long", year: "numeric" }) : day(iso, { weekday: "long", day: "numeric", month: "long" }));
     return html`<div class="card">
-      <h3>${t("d.per_day")}</h3>
+      <h3>${t(year ? "d.per_month" : "d.per_day")}</h3>
       <div class="bars">
-        ${d.days.map((x, i) => html`<button class="col" style="opacity:${i === hd ? 1 : 0.6}" aria-label="${day(x.date)}: ${eur(dayTotal(i))}" @mouseenter=${() => (this._hoverDay = i)} @click=${() => (this._hoverDay = i)}>
+        ${d.days.map((x, i) => html`<button class="col" style="opacity:${i === hd ? 1 : 0.6}" aria-label="${label(x.date)}: ${eur(dayTotal(i))}" @mouseenter=${() => (this._hoverDay = i)} @click=${() => (this._hoverDay = i)}>
           ${series.filter((id) => (x.series[id]?.cost ?? 0) > 0.0005).map((id, j, arr) => html`<div class="seg" style="height:${((x.series[id]!.cost / maxPos) * 100).toFixed(2)}%;background:${deviceInfo(this.ctx, id).color};border-radius:${j === arr.length - 1 ? "4px 4px 0 0" : "0"}"></div>`)}
         </button>`)}
       </div>
@@ -223,8 +229,8 @@ export class EdDashboard extends LitElement {
             return html`<div class="col"><div style="height:${((neg / Math.max(maxNeg, maxPos)) * 200).toFixed(1)}px;max-height:40px;background:var(--ed-ok);border-radius:0 0 4px 4px"></div></div>`;
           })}</div>`
         : nothing}
-      <div class="labels">${d.days.map((x, i) => html`<span>${week ? day(x.date, { weekday: "short", day: "numeric" }) : (i === 0 || (i + 1) % 5 === 0 ? day(x.date, { day: "numeric" }) : "")}</span>`)}</div>
-      ${sel ? html`<div class="readout"><b>${day(sel.date, { weekday: "long", day: "numeric", month: "long" })}: ${eur(dayTotal(hd))}</b>
+      <div class="labels">${d.days.map((x, i) => html`<span>${year ? day(x.date, { month: "short" }) : week ? day(x.date, { weekday: "short", day: "numeric" }) : (i === 0 || (i + 1) % 5 === 0 ? day(x.date, { day: "numeric" }) : "")}</span>`)}</div>
+      ${sel ? html`<div class="readout"><b>${label(sel.date)}: ${eur(dayTotal(hd))}</b>
         <span class="muted"> · ${series.filter((id) => Math.abs(sel.series[id]?.cost ?? 0) > 0.0005).map((id) => `${deviceInfo(this.ctx, id).name} ${eur(sel.series[id]!.cost)}`).join(" · ")}</span></div>` : nothing}
       <div class="legend" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-top:12px">
         ${series.map((id) => { const i = deviceInfo(this.ctx, id); return html`<div class="row"><span class="swatch" style="background:${i.color}"></span><span class="small">${i.name}</span></div>`; })}

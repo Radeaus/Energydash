@@ -45,7 +45,8 @@ from .const import (
     VERSION,
 )
 from .engine import to_kwh, to_watt
-from .history import INVALID, async_get_states, keep_days, numeric_series, unit_of
+from .backfill import HOUR, backfill_device, backfill_house, prices_from_cost, self_use_hourly
+from .history import INVALID, async_get_hourly, async_get_states, keep_days, numeric_series, unit_of
 from .replay import replay_device, replay_house, self_use_series
 from .price import PriceProvider, PriceSeries, parse_forecast
 from .storage import EnergydashStorage
@@ -57,6 +58,7 @@ SIGNAL_UPDATE = f"{DOMAIN}_update"
 SIGNAL_DEVICES = f"{DOMAIN}_devices"
 OBSERVED_PRICE_DAYS = 2
 MAX_RECALC_DAYS = 30
+BACKFILL_DAYS = 366  # older than the recorder window: hourly long-term statistics
 
 DEVICE_FIELDS = (
     "id", "name", "type", "energy_entity", "energy_is_power", "power_entity", "session_source",
@@ -520,7 +522,8 @@ class EnergydashCoordinator:
     # ------------------------------------------------------------ recalculation
     def _window(self) -> tuple[datetime, datetime]:
         end = dt_util.utcnow()
-        return end - timedelta(days=min(keep_days(self.hass), MAX_RECALC_DAYS)), end
+        start = end - timedelta(days=min(keep_days(self.hass), MAX_RECALC_DAYS))
+        return start.replace(minute=0, second=0, microsecond=0), end
 
     async def _history_prices(self, start: datetime, end: datetime) -> PriceProvider:
         s = self.settings
@@ -559,6 +562,7 @@ class EnergydashCoordinator:
         imp_states = await async_get_states(self.hass, [imp_id], start, end)
         imp_series = numeric_series(imp_states.get(imp_id, []), "energy", unit_of(self.hass, imp_id))
         solar_series = await self._history_solar(start, end)
+        older = await self._backfill_inputs(start, prices)
         for dev_id in ids:
             dev = self.device(dev_id)
             if dev is None:
@@ -573,6 +577,7 @@ class EnergydashCoordinator:
                     replay_device, dev, states, imp_series, prices, start, end, self.tz,
                     unit_of(self.hass, dev["energy_entity"]), unit_of(self.hass, dev.get("power_entity")), solar_series,
                 )
+                await self._backfill_device(agg, dev, older, start)
                 self.agg.clear_series(dev_id)
                 if agg.hours.get(dev_id):
                     self.agg.hours[dev_id] = agg.hours[dev_id]
@@ -588,9 +593,92 @@ class EnergydashCoordinator:
                 self._paused.discard(dev_id)
                 self.busy.pop(dev_id, None)
         if include_house:
-            await self.async_recalculate_house(imp_series=imp_series, prices=prices)
+            await self.async_recalculate_house(imp_series=imp_series, prices=prices, older=older)
+        elif older and not any(k < hour_key(start, self.tz) for k in self.agg.hours.get(HOUSE_KEY, {})):
+            # A first device: also fill the house before the window, so "Rest van het huis" works there.
+            house_agg = Aggregator()
+            await self.hass.async_add_executor_job(
+                backfill_house, house_agg, older["imp"], older["solar"], older["prices"], self.tz, start
+            )
+            self.agg.hours.setdefault(HOUSE_KEY, {}).update(house_agg.hours.get(HOUSE_KEY, {}))
         self._save(archive=True)
         self.notify()
+
+    async def _backfill_inputs(self, before: datetime, window_prices: PriceProvider) -> dict[str, Any] | None:
+        """Hourly statistics before the recorder window: P1 import, solar self-use and prices."""
+        s = self.settings
+        start = before - timedelta(days=BACKFILL_DAYS)
+        imp_id, exp_id, sol_id = s.get(CONF_IMPORT_ENTITY), s.get(CONF_EXPORT_ENTITY), s.get(CONF_SOLAR_ENTITY)
+        try:
+            change = await async_get_hourly(self.hass, [imp_id, exp_id, sol_id], start, before, "change")
+            imp = change.get(imp_id, {})
+            solar = None
+            if sol_id and change.get(sol_id):
+                solar = self_use_hourly(change[sol_id], change.get(exp_id, {}) if exp_id else None)
+            prices = await self._backfill_prices(start, before, imp, window_prices)
+        except Exception:
+            _LOGGER.exception("Reading long-term statistics failed; only the recorder window is used")
+            return None
+        _LOGGER.debug("Long-term statistics: %d hours of P1 import before %s", len(imp), before)
+        return {"imp": imp, "solar": solar, "prices": prices}
+
+    async def _backfill_prices(
+        self, start: datetime, before: datetime, imp: dict[datetime, float], window_prices: PriceProvider
+    ) -> PriceProvider:
+        s = self.settings
+        if s.get(CONF_CONTRACT) == CONTRACT_FIXED:
+            return self.price_provider()
+        price_id, export_id = s.get(CONF_PRICE_ENTITY), s.get(CONF_EXPORT_PRICE_ENTITY)
+        mean = (await async_get_hourly(self.hass, [price_id], start, before, "mean")).get(price_id, {})
+        imp_id = s.get(CONF_IMPORT_ENTITY)
+        if not mean and imp_id:
+            # No statistics for the price entity: use the Energy dashboard's cost sensor of the P1 import.
+            cost_id = f"{imp_id}_cost"
+            cost = (await async_get_hourly(self.hass, [cost_id], start, before, "change")).get(cost_id, {})
+            mean = prices_from_cost(cost, imp)
+        hourly = lambda values: PriceSeries.from_intervals([(h, h + HOUR, v) for h, v in values.items()])  # noqa: E731
+        export: dict[datetime, float] = {}
+        if export_id:
+            export = (await async_get_hourly(self.hass, [export_id], start, before, "mean")).get(export_id, {})
+        export_fixed = _float(s.get(CONF_EXPORT_PRICE_FIXED))
+        if not export and export_fixed is None and mean:
+            # Export prices only come from the forecast attribute, which statistics do not keep:
+            # use the export/import ratio of the recorder window.
+            ratio = self._export_ratio(window_prices, before)
+            export = {h: v * ratio for h, v in mean.items()}
+        return PriceProvider(
+            observed=hourly(mean), export_observed=hourly(export),
+            fallback=self.prices.current, export_fallback=export_fixed,
+        )
+
+    @staticmethod
+    def _export_ratio(prices: PriceProvider, window_start: datetime) -> float:
+        hour, imp_sum, exp_sum = window_start, 0.0, 0.0
+        while hour < dt_util.utcnow() - HOUR:
+            p = prices.price(hour, hour + HOUR)
+            if p is not None and p > 0:
+                imp_sum += p
+                exp_sum += prices.export_price(hour, hour + HOUR)
+            hour += HOUR
+        return exp_sum / imp_sum if imp_sum > 0 else 0.0
+
+    async def _backfill_device(self, agg: Aggregator, dev: dict[str, Any], older: dict[str, Any] | None, before: datetime) -> None:
+        if not older:
+            return
+        start = before - timedelta(days=BACKFILL_DAYS)
+        eid = dev["energy_entity"]
+        try:
+            if dev.get("energy_is_power"):
+                watts = (await async_get_hourly(self.hass, [eid], start, before, "mean")).get(eid, {})
+                energy = {h: max(w, 0.0) / 1000 for h, w in watts.items()}
+            else:
+                energy = (await async_get_hourly(self.hass, [eid], start, before, "change")).get(eid, {})
+            hours = await self.hass.async_add_executor_job(
+                backfill_device, agg, dev["id"], energy, older["imp"], older["solar"], older["prices"], self.tz, before
+            )
+            _LOGGER.debug("Long-term statistics for %s: %d hours", dev["id"], hours)
+        except Exception:
+            _LOGGER.exception("Long-term statistics for %s could not be read", dev["id"])
 
     async def _history_solar(self, start: datetime, end: datetime) -> list:
         """Cumulative solar self-use over the window, for the zon <= self-use bound."""
@@ -603,7 +691,7 @@ class EnergydashCoordinator:
         export = numeric_series(states.get(exp_id, []), "energy", unit_of(self.hass, exp_id)) if exp_id else []
         return self_use_series(solar, export)
 
-    async def async_recalculate_house(self, imp_series=None, prices: PriceProvider | None = None) -> None:
+    async def async_recalculate_house(self, imp_series=None, prices: PriceProvider | None = None, older=None) -> None:
         s = self.settings
         start, end = self._window()
         self.busy[HOUSE_KEY] = "recalculating"
@@ -617,6 +705,12 @@ class EnergydashCoordinator:
             if imp_series is not None:
                 series[0] = imp_series
             house, agg = await self.hass.async_add_executor_job(replay_house, series, prices, start, end, self.tz)
+            if older is None:
+                older = await self._backfill_inputs(start, prices)
+            if older:
+                await self.hass.async_add_executor_job(
+                    backfill_house, agg, older["imp"], older["solar"], older["prices"], self.tz, start
+                )
             self.agg.hours[HOUSE_KEY] = agg.hours.get(HOUSE_KEY, {})
             self.house = house
         except Exception:

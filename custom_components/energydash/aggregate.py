@@ -149,8 +149,9 @@ class Aggregator:
         first_day: date,
         days: int,
         solar_mode: str,
+        by_month: bool = False,
     ) -> dict[str, Any]:
-        """Dashboard data for `days` local days starting at `first_day`."""
+        """Dashboard data for `days` local days starting at `first_day` (rows per day or per month)."""
         day_keys = [(first_day + timedelta(days=i)) for i in range(days)]
         start_key = f"{day_keys[0].isoformat()}T00"
         end_key = f"{(day_keys[-1] + timedelta(days=1)).isoformat()}T00"
@@ -162,11 +163,12 @@ class Aggregator:
             for key, vals in self.series_hours(sid, start_key, end_key).items():
                 per_hour[key][sid] = vals
 
-        day_rows: dict[str, dict[str, list[float]]] = {d.isoformat(): defaultdict(_zero) for d in day_keys}
+        row_key = (lambda day: f"{day[:7]}-01") if by_month else (lambda day: day)  # noqa: E731
+        day_rows: dict[str, dict[str, list[float]]] = {row_key(d.isoformat()): defaultdict(_zero) for d in day_keys}
         totals: dict[str, list[float]] = defaultdict(_zero)
         profile = [[0.0, 0.0] for _ in range(24)]  # kWh, all-net value
         for key, by_series in per_hour.items():
-            day = key[:10]
+            day = row_key(key[:10])
             hour = int(key[11:13])
             dev_sum = _zero()
             for sid in ids:
@@ -209,15 +211,25 @@ class Aggregator:
         }
 
     def baseload(self, devices: list[dict[str, Any]], today: date, solar_mode: str, weeks: int = 8) -> dict[str, Any]:
-        """Sluipverbruik: median house power between 02:00 and 05:00 (docs/02 §6)."""
+        """Sluipverbruik: what the house always uses (docs/02 §6).
+
+        Per night hour 02:00-05:00: house minus the devices that run in sessions (a car charging
+        at night or a dishwasher on a timer is not baseload). Per night the lowest of those
+        hours counts; the baseload is the median over the nights.
+        """
         house = self.hours.get(HOUSE_KEY, {})
+        session_ids = [d["id"] for d in devices if d.get("type") != TYPE_CONTINUOUS]
         nights: dict[str, float] = {}
         first = today - timedelta(weeks=weeks)
         d = first
         while d <= today:
-            vals = [house[f"{d.isoformat()}T{h:02d}"][F_KWH] for h in (2, 3, 4) if f"{d.isoformat()}T{h:02d}" in house]
-            if len(vals) == 3:
-                nights[d.isoformat()] = median(vals) * 1000
+            keys = [f"{d.isoformat()}T{h:02d}" for h in (2, 3, 4)]
+            if all(k in house for k in keys):
+                vals = []
+                for k in keys:
+                    sessions = sum(self.hours.get(sid, {}).get(k, (0.0,))[F_KWH] for sid in session_ids)
+                    vals.append(max(house[k][F_KWH] - sessions, 0.0))
+                nights[d.isoformat()] = min(vals) * 1000
             d += timedelta(days=1)
 
         recent = [v for k, v in nights.items() if k >= (today - timedelta(days=7)).isoformat()]
@@ -237,6 +249,8 @@ class Aggregator:
         parts = []
         explained = 0.0
         for dev in devices:
+            if dev.get("type") != TYPE_CONTINUOUS:
+                continue  # sessions are taken out of the baseload above
             watt = night_avg(dev["id"])
             if watt < 0.5:
                 continue

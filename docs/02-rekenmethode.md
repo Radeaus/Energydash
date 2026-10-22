@@ -107,11 +107,24 @@ Per apparaat één van drie soorten:
 - Bij loskoppelen tijdens het laden kan de laatste meetstap (≤ 5 min) verloren gaan: de teller springt naar 0 voordat de laatste stand binnenkomt. Dat geldt ook voor de leverancier zelf.
 
 ## 6. Sluipverbruik en "Rest van het huis"
-- Basislast = mediaan van het huisverbruik tussen 02:00 en 05:00 (P1-import, eventueel + zelfverbruik zon = 0 's nachts).
-- Uitgesplitst in: doorlopende apparaten met een meter, standby van andere meters, en "onverklaard".
+- Per nacht: voor elk uur tussen 02:00 en 05:00 het huisverbruik min de apparaten met sessies (laadpaal, auto, wasmachine op een timer). Die horen niet bij de basislast; anders telt elke nachtelijke laadsessie als sluipverbruik.
+- Van die drie uren telt het rustigste: zo valt ook een apparaat zonder eigen meter dat 's nachts even draait weg.
+- Basislast = mediaan daarvan over de laatste 7 nachten.
+- Uitgesplitst in: doorlopende apparaten met een meter en "onverklaard". Apparaten met sessies staan er niet in.
 - "Rest van het huis" op het dashboard = P1-totaal minus de toegevoegde apparaten, zodat alles optelt tot het hele huis.
 
-## 7. Validatie op echte data
+## 7. Historie van vóór de recorder
+
+De recorder bewaart de standen meestal 10 dagen. Voor de periode daarvoor (tot een jaar terug) gebruikt "Opnieuw berekenen" de langetermijnstatistieken van Home Assistant, die per uur blijvend worden bewaard:
+
+- Energie per uur = de `change` van de statistiek van de teller (resets heeft HA al verwerkt). Een vermogenssensor: het uurgemiddelde.
+- Zon of net per uur met dezelfde regel als per meetstap, inclusief de grens met de opwekteller. Omdat `min(Σa, Σb) ≥ Σ min(a, b)` geeft een uursplitsing nooit méér zon dan een fijnere: geen spookzon, hooguit iets te weinig.
+- Prijs per uur = het uurgemiddelde van de prijs-entiteit. Heeft die geen statistieken, dan de kostensensor van het Energy-dashboard (`<P1-import>_cost`): kosten van dat uur gedeeld door de import van dat uur.
+- Terugleverprijs: van de entiteit voor de terugleverprijs, anders de vaste terugleverprijs, anders de verhouding teruglever-/importprijs uit de recorder-periode.
+- Uren met meer dan 25 kWh tellen niet mee (laden onderweg).
+- Sessies zijn uit uurtotalen niet terug te halen; die periode toont alleen kosten per uur, dag en maand.
+
+## 8. Validatie op echte data
 
 ### Laadsessie 20–21 oktober 2026 (nachtladen, 23:01–05:46)
 

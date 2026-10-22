@@ -20,7 +20,8 @@ Energydash/
 │   ├── replay.py            # PUUR: recorder-historie door de trackers halen (terugrekenen)
 │   ├── discovery_rules.py   # PUUR: filters en soort-voorstel (docs/03)
 │   ├── discovery.py         # HA: meters vinden, gegevenscheck, sessievoorbeeld
-│   ├── history.py           # HA: recorder-historie ophalen (compact formaat)
+│   ├── backfill.py          # PUUR: uurstatistieken van vóór de recorder omrekenen
+│   ├── history.py           # HA: recorder-historie (compact formaat) en uurstatistieken ophalen
 │   ├── coordinator.py       # HA: state listeners, timers, prijzen, opslaan, terugrekenen, resets
 │   ├── storage.py           # HA: Store (config / recent / archief)
 │   ├── sensor.py            # per apparaat: kosten vandaag/maand, laatste sessie; huis, rest, sluipverbruik
@@ -71,7 +72,7 @@ In 1.0 heet `energydash/quality` `energydash/analyze`, en `sessions/list`/`get` 
 
 ## Gegevens
 - **Live**: state-change listeners op gekozen tellers, P1-import en sessie-entiteiten. Elke tellerstap → engine → opslag.
-- **Terugrekenen**: bij toevoegen van een apparaat de recorder-historie (standaard ~10 dagen) van teller, P1 en prijs ophalen en dezelfde engine draaien. Daarna alleen nog statistieken (uurniveau), dus niet nauwkeurig verder terug.
+- **Terugrekenen**: bij toevoegen van een apparaat de recorder-historie (standaard ~10 dagen) van teller, P1 en prijs ophalen en dezelfde engine draaien. Daarvoor, tot een jaar terug, de langetermijnstatistieken per uur (`backfill.py`, zie docs/02 §7): kosten per uur, geen sessies.
 - **Opslag**: `Store` met versie en migraties, in drie bestanden: `energydash.config` (apparaten), `energydash.data` (laatste 35 dagen, trackerstatus, open sessies; hooguit elke 5 minuten geschreven en altijd bij afsluiten) en `energydash.archive` (ouder, ongeveer dagelijks). Zo blijft de schrijfbelasting laag op een SD-kaart.
 - **Resultaten** worden per reeks (apparaat, `_house`) in lokale uurbuckets bewaard met vijf velden: kWh, zon-kWh, netkosten, kosten-alles-net en zon-terugleverwaarde. De zonkeuze wordt pas bij het opvragen toegepast, dus wisselen werkt ook voor het verleden.
 - **Sensoren** met `state_class`/`device_class: monetary` zodat HA zelf langetermijnstatistieken bijhoudt.
