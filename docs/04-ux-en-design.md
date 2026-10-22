@@ -54,7 +54,7 @@ Doel: een nieuwe gebruiker heeft in twee klikken de apparaten, zonder te weten w
 - **Sessies**: lijst; tik opent een dialoog met kosten, staven per kwartier (zon/net), opbouw (net, zon, totaal), inzicht, en uitklapblok **"Hoe is dit berekend?"** (energiebron, zon/net-regel, prijsregel, controle).
 - **Sluipverbruik**: basislast (W, kWh/dag), €/maand, €/jaar, uitsplitsing (verklaard/onverklaard) met advies, basislast per week.
 - **Apparaten**: lijst met soort en regel; zwevende knop **Apparaat toevoegen**. Apparaatdialoog met bronnen en gegevenscheck; **Verwijderen** → bevestiging **"Apparaat verwijderen?"** met uitleg dat geschiedenis bewaard blijft.
-- Tandwiel in de kopbalk: **Instellingen**: dezelfde vragen als stap 1a–1c onder elkaar (Stroomprijs, Meters, Zonnestroom en teruglevering), daarna Testen en beheer. Opslaan met gewijzigde instellingen rekent de historie opnieuw uit ("Opgeslagen. Je historie wordt opnieuw berekend.").
+- Tandwiel in de kopbalk: **Instellingen**, een eigen pagina (geen pop-up) met een terugknop in de kopbalk. Dezelfde vragen als stap 1a–1c, elk onderwerp in een eigen kaart (Stroomprijs, Meters, Zonnestroom en teruglevering), daarna de kaart Testen en beheer. Opslaan en Annuleren staan in een balk die onderaan in beeld blijft; na opslaan, terugzetten of importeren ga je terug naar het dashboard. Opslaan met gewijzigde instellingen rekent de historie opnieuw uit ("Opgeslagen. Je historie wordt opnieuw berekend.").
 - Zijn er apparaten maar is de prijs nog niet gekozen, dan staat bovenaan een waarschuwing met **Stroomprijs instellen**.
 
 ## Teksten (UI text)

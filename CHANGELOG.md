@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.8 – 22 oktober 2026
+
+### Instellingen
+- Instellingen openen als eigen pagina in plaats van een pop-up, met een terugknop in de kopbalk. Stroomprijs, Meters, Zonnestroom en teruglevering, en Testen en beheer staan elk in een eigen kaart, met Opslaan en Annuleren onderaan in beeld.
+
+### Apparaten
+- Een apparaat zonder gekozen icoon krijgt overal hetzelfde icoon als in de snelle start, geraden uit de naam: een airco toont dus ook na het toevoegen een airco-icoon. Doorlopende apparaten zonder herkenbare naam krijgen een stekker in plaats van een server.
+
 ## 1.2.7 – 22 oktober 2026
 
 ### Snelle start en instellingen

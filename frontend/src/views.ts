@@ -15,7 +15,18 @@ export interface Ctx {
   tick: number; // bumps when the backend reports changes
 }
 
-export const TYPE_ICON: Record<string, string> = { sessions: "mdi:washing-machine", continuous: "mdi:server", charger: "mdi:ev-station" };
+const TYPE_ICON: Record<string, string> = { sessions: "mdi:power-plug-outline", continuous: "mdi:power-plug", charger: "mdi:ev-station" };
+const NAME_ICONS: [string, string][] = [
+  ["was", "mdi:washing-machine"], ["washer", "mdi:washing-machine"], ["droger", "mdi:tumble-dryer"], ["dryer", "mdi:tumble-dryer"],
+  ["vaatwas", "mdi:dishwasher"], ["dishwasher", "mdi:dishwasher"], ["airco", "mdi:air-conditioner"], ["server", "mdi:server"],
+  ["koelkast", "mdi:fridge"], ["fridge", "mdi:fridge"], ["vriezer", "mdi:fridge"], ["warmtepomp", "mdi:heat-pump"], ["boiler", "mdi:water-boiler"],
+];
+
+/** Icon of a device without a chosen icon: guessed from its name and counter, else by type. Same in the quick start and the panel. */
+export function defaultIcon(d: { name: string; type: string; energy_entity?: string | null }): string {
+  const low = `${d.name} ${d.energy_entity ?? ""}`.toLowerCase();
+  return NAME_ICONS.find(([tok]) => low.includes(tok))?.[1] ?? TYPE_ICON[d.type] ?? "mdi:flash";
+}
 
 export function deviceInfo(ctx: Ctx, id: string): { name: string; color: string; type: string; icon: string } {
   const c = colors(ctx.dark);
@@ -23,11 +34,11 @@ export function deviceInfo(ctx: Ctx, id: string): { name: string; color: string;
   const idx = ctx.config.devices.findIndex((d) => d.id === id);
   if (idx >= 0) {
     const d = ctx.config.devices[idx];
-    return { name: d.name, color: deviceColor(d.color ?? idx, ctx.dark), type: d.type, icon: d.icon || TYPE_ICON[d.type] };
+    return { name: d.name, color: deviceColor(d.color ?? idx, ctx.dark), type: d.type, icon: d.icon || defaultIcon(d) };
   }
   const arch = ctx.config.archived.find((a) => a.id === id);
   const type = arch?.type ?? "sessions";
-  return { name: arch?.name ?? id, color: c.rest, type, icon: TYPE_ICON[type] ?? "mdi:flash" };
+  return { name: arch?.name ?? id, color: c.rest, type, icon: defaultIcon({ name: arch?.name ?? "", type }) };
 }
 
 /** A number that explains itself on hover or focus (see TipController). */

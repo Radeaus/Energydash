@@ -8,7 +8,7 @@ import { t } from "./i18n";
 import "./settings-form";
 import { toSave, withAnswers } from "./settings-form";
 import { shared } from "./styles";
-import { TYPE_ICON, deviceInfo, ruleText, type Ctx } from "./views";
+import { defaultIcon, deviceInfo, ruleText, type Ctx } from "./views";
 
 type Step = "pick" | "type" | "sources" | "tune";
 const CHARGER_OFF_DELAY_MIN = 60;
@@ -45,7 +45,7 @@ const lookCss = css`
 /** Colour and icon of a device: palette swatches plus any colour, a set of icons plus any mdi icon. */
 function renderLook(dev: Device, fallbackIdx: number, dark: boolean, onChange: (patch: Partial<Device>) => void): TemplateResult {
   const color = deviceColor(dev.color ?? fallbackIdx, dark);
-  const icon = dev.icon || TYPE_ICON[dev.type];
+  const icon = dev.icon || defaultIcon(dev);
   const hex = typeof dev.color === "string" ? dev.color : DEVICE_LIGHT[(dev.color ?? fallbackIdx) % DEVICE_LIGHT.length];
   return html`<div class="look">
     <div>
@@ -541,7 +541,8 @@ export class EdDeviceDialog extends LitElement {
 }
 
 // ------------------------------------------------------------------ settings
-export class EdSettingsDialog extends LitElement {
+/** Settings as a page of its own: one card per topic, save bar at the bottom. */
+export class EdSettingsPage extends LitElement {
   declare ctx: Ctx;
   declare _s: Settings;
   declare _valid: boolean;
@@ -549,7 +550,27 @@ export class EdSettingsDialog extends LitElement {
   declare _error: string;
 
   static properties = { ctx: { attribute: false }, _s: { state: true }, _valid: { state: true }, _saving: { state: true }, _error: { state: true } };
-  static styles = [shared, css`.tool { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--ed-line); } .tool .grow > b { font-weight: 500; }`];
+  static styles = [
+    shared,
+    css`
+      :host { display: block; }
+      .page { max-width: 760px; margin: 0 auto; padding: 24px 16px 96px; display: grid; gap: 24px; }
+      ed-settings-form { gap: 24px; }
+      section.card { display: grid; gap: 4px; padding: 20px 24px 12px; }
+      section.card h2 { margin: 0; }
+      .tool { display: flex; gap: 16px; align-items: flex-start; padding: 16px 0; border-top: 1px solid var(--ed-line); flex-wrap: wrap; }
+      .tool > ha-icon { color: var(--ed-text2); margin-top: 2px; }
+      .tool .grow { min-width: 200px; }
+      .tool .grow > b { font-weight: 500; }
+      .tool .help { margin-top: 2px; }
+      .bar {
+        position: sticky; bottom: 0; z-index: 2; display: flex; gap: 8px; justify-content: flex-end;
+        padding: 12px 16px; background: var(--ed-card); border-top: 1px solid var(--ed-line);
+      }
+      .bar > div { max-width: 760px; width: 100%; margin: 0 auto; display: flex; gap: 8px; justify-content: flex-end; }
+      @media (max-width: 600px) { .page { padding: 16px 16px 96px; gap: 16px; } section.card { padding: 16px 16px 8px; } }
+    `,
+  ];
   private _start = "";
 
   constructor() {
@@ -600,15 +621,15 @@ export class EdSettingsDialog extends LitElement {
 
   render() {
     const admin = this.ctx.config.is_admin;
-    return html`<ed-dialog .heading=${t("set.title")} @closed=${() => fire(this, "closed")}>
+    return html`<div class="page">
       ${!admin ? html`<div class="alert info"><ha-icon icon="mdi:information"></ha-icon>${t("c.admin_only")}</div>` : nothing}
-      ${this._error ? html`<div class="alert bad"><ha-icon icon="mdi:alert-circle"></ha-icon>${t("c.error", { msg: this._error })}</div>` : nothing}
-      <ed-settings-form .hass=${this.ctx.hass} .config=${this.ctx.config} .value=${this._s} section="all"
+      ${this._error ? html`<div class="alert bad" role="alert"><ha-icon icon="mdi:alert-circle"></ha-icon>${t("c.error", { msg: this._error })}</div>` : nothing}
+      <ed-settings-form cards .hass=${this.ctx.hass} .config=${this.ctx.config} .value=${this._s} section="all"
         @change=${(e: CustomEvent) => { this._s = e.detail.value; this._valid = e.detail.valid; }}></ed-settings-form>
       ${admin
-        ? html`<div>
-            <h3 style="margin-top:8px">${t("set.test")}</h3>
-            <p class="muted small">${t("set.test_text")}</p>
+        ? html`<section class="card">
+            <h2>${t("set.test")}</h2>
+            <p class="muted">${t("set.test_text")}</p>
             <div class="tool"><ha-icon icon="mdi:calculator-variant-outline"></ha-icon><div class="grow"><b>${t("set.recalc_all")}</b><div class="help">${t("set.recalc_all_text")}</div></div>
               <button class="btn secondary" @click=${() => fire(this, "recalc-all")}>${t("v.recalc")}</button></div>
             <div class="tool"><ha-icon icon="mdi:file-export-outline"></ha-icon><div class="grow"><b>${t("set.export_btn")} / ${t("set.import_btn").toLowerCase()}</b><div class="help">${t("set.backup_text")}</div></div>
@@ -617,15 +638,19 @@ export class EdSettingsDialog extends LitElement {
               <button class="btn danger-text" @click=${() => fire(this, "reset", "data")}>${t("set.clear")}</button></div>
             <div class="tool"><ha-icon icon="mdi:backup-restore"></ha-icon><div class="grow"><b>${t("set.reset")}</b><div class="help">${t("set.reset_text")}</div></div>
               <button class="btn danger-text" @click=${() => fire(this, "reset", "all")}>${t("set.reset")}</button></div>
-            <p class="muted small">${t("set.version", { v: this.ctx.config.version })}</p>
-          </div>`
+          </section>`
         : nothing}
-      <button slot="footer" class="btn secondary" @click=${() => fire(this, "closed")}>${t("c.cancel")}</button>
-      ${admin ? html`<button slot="footer" class="btn" ?disabled=${!this._valid || this._saving} @click=${this._save}>${t("c.save")}</button>` : nothing}
-    </ed-dialog>`;
+      <p class="muted small" style="text-align:center">${t("set.version", { v: this.ctx.config.version })}</p>
+    </div>
+    ${admin
+      ? html`<div class="bar"><div>
+          <button class="btn secondary" @click=${() => fire(this, "closed")}>${t("c.cancel")}</button>
+          <button class="btn" ?disabled=${!this._valid || this._saving} @click=${this._save}>${t("c.save")}</button>
+        </div></div>`
+      : nothing}`;
   }
 }
 
 define("ed-add-device", EdAddDevice);
 define("ed-device-dialog", EdDeviceDialog);
-define("ed-settings-dialog", EdSettingsDialog);
+define("ed-settings-page", EdSettingsPage);

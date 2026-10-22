@@ -9,7 +9,7 @@ import { t } from "./i18n";
 import "./settings-form";
 import { needsSolar, toSave } from "./settings-form";
 import { shared } from "./styles";
-import type { Ctx } from "./views";
+import { defaultIcon, type Ctx } from "./views";
 
 type Stage = "start" | "price" | "meters" | "solar" | "scan" | "list" | "saving" | "calc";
 type SetupStep = "price" | "meters" | "solar";
@@ -17,19 +17,6 @@ const CALC_SKIP_AFTER_S = 20; // offer to go ahead while long recalculations sti
 const CALC_LEAVE_MS = 1200; // let the last check mark show before switching to the dashboard
 const SCAN_STEPS = ["ob.scan.prefs", "ob.scan.meters", "ob.scan.history"];
 const SCAN_TICK_MS = 900;
-
-const ICONS: [string, string][] = [
-  ["was", "mdi:washing-machine"], ["washer", "mdi:washing-machine"], ["droger", "mdi:tumble-dryer"], ["dryer", "mdi:tumble-dryer"],
-  ["vaatwas", "mdi:dishwasher"], ["dishwasher", "mdi:dishwasher"], ["airco", "mdi:air-conditioner"], ["server", "mdi:server"],
-  ["koelkast", "mdi:fridge"], ["fridge", "mdi:fridge"], ["vriezer", "mdi:fridge"], ["warmtepomp", "mdi:heat-pump"], ["boiler", "mdi:water-boiler"],
-];
-
-function deviceIcon(s: Suggestion): string {
-  const low = `${s.device.name} ${s.device.energy_entity}`.toLowerCase();
-  const hit = ICONS.find(([tok]) => low.includes(tok));
-  if (hit) return hit[1];
-  return s.device.type === "charger" ? "mdi:ev-station" : s.device.type === "continuous" ? "mdi:power-plug" : "mdi:power-plug-outline";
-}
 
 function sparkline(values: number[]): TemplateResult | typeof nothing {
   if (values.length < 2) return nothing;
@@ -344,7 +331,7 @@ export class EdOnboarding extends LitElement {
       ${added
         ? html`<ha-icon icon="mdi:check-circle" style="color:var(--ed-ok);--mdc-icon-size:24px;flex:none" title=${t("ob.added")}></ha-icon>`
         : html`<button class="check" role="checkbox" aria-checked=${this._sel.has(id)} aria-label=${s.device.name} @click=${() => this._toggle(id)}>${this._sel.has(id) ? html`<ha-icon icon="mdi:check"></ha-icon>` : nothing}</button>`}
-      <span class="dev"><ha-icon icon=${deviceIcon(s)}></ha-icon></span>
+      <span class="dev"><ha-icon icon=${defaultIcon(s.device)}></ha-icon></span>
       <div class="grow">
         <b>${s.device.name}</b>
         <div class="muted small">${added ? t("ob.added") : primary ? `${t(`type.${s.device.type}`)} · ${this._line(s)}` : t(`ob.reason.${s.reason}`, { d: s.summary.days })}</div>

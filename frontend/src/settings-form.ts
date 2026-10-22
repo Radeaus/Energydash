@@ -1,5 +1,5 @@
 // <ed-settings-form>: electricity price, meters, and solar and export, as plain questions (docs/04).
-// Used by the quick start (one section per step) and by the settings dialog (all sections).
+// Used by the quick start (one section per step) and by the settings page (all sections, one card each).
 // Fires "change" with { value, valid } on every change and once after the first render.
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
@@ -58,6 +58,7 @@ export class EdSettingsForm extends LitElement {
   declare config: ConfigResult;
   declare value: Settings;
   declare section: Section;
+  declare cards: boolean; // all sections: each in its own card
   declare _extra: boolean | null; // price entity: does something come on top?
   declare _dual: boolean | null; // fixed price: normal and low tariff?
 
@@ -66,6 +67,7 @@ export class EdSettingsForm extends LitElement {
     config: { attribute: false },
     value: { attribute: false },
     section: { type: String },
+    cards: { type: Boolean },
     _extra: { state: true },
     _dual: { state: true },
   };
@@ -83,6 +85,9 @@ export class EdSettingsForm extends LitElement {
       .meter ed-entity-select { flex: 1; min-width: 0; }
       .meter button.icon { margin-top: 26px; }
       h3 { margin: 4px 0 -8px; }
+      section.card { display: grid; gap: 20px; padding: 20px 24px 24px; }
+      section.card h2 { margin: 0; }
+      @media (max-width: 600px) { section.card { padding: 16px; } }
       .status { display: flex; gap: 6px; align-items: flex-start; }
       .status ha-icon { --mdc-icon-size: 16px; flex: none; margin-top: 1px; }
     `,
@@ -91,6 +96,7 @@ export class EdSettingsForm extends LitElement {
   constructor() {
     super();
     this.section = "all";
+    this.cards = false;
     this._extra = null;
     this._dual = null;
   }
@@ -171,10 +177,12 @@ export class EdSettingsForm extends LitElement {
     const all = this.section === "all";
     const s = this.value;
     if (!s) return nothing;
+    const part = (heading: string, body: TemplateResult) =>
+      !all ? body : this.cards ? html`<section class="card"><h2>${heading}</h2>${body}</section>` : html`<h3>${heading}</h3>${body}`;
     return html`
-      ${all || this.section === "price" ? html`${all ? html`<h3>${t("sf.h.price")}</h3>` : nothing}${this._price(s)}` : nothing}
-      ${all || this.section === "meters" ? html`${all ? html`<h3>${t("sf.h.meters")}</h3>` : nothing}${this._meters()}` : nothing}
-      ${(all && needsSolar(s)) || this.section === "solar" ? html`${all ? html`<h3>${t("sf.h.solar")}</h3>` : nothing}${this._solar(s)}` : nothing}`;
+      ${all || this.section === "price" ? part(t("sf.h.price"), this._price(s)) : nothing}
+      ${all || this.section === "meters" ? part(t("sf.h.meters"), this._meters()) : nothing}
+      ${(all && needsSolar(s)) || this.section === "solar" ? part(t("sf.h.solar"), this._solar(s)) : nothing}`;
   }
 
   /** Grid price of this moment with the answers so far: entity (plus markup) or the normal tariff. */

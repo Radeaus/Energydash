@@ -14,8 +14,7 @@ type Tab = "dashboard" | "sessions" | "baseload" | "devices";
 type Dialog =
   | { kind: "add"; candidate?: Candidate | null; device?: Device | null }
   | { kind: "device"; device: Device }
-  | { kind: "session"; session: Session }
-  | { kind: "settings" };
+  | { kind: "session"; session: Session };
 interface Confirm {
   heading: string;
   text: string;
@@ -23,6 +22,7 @@ interface Confirm {
   danger: boolean;
   run: () => Promise<unknown>;
   toast: string;
+  leave?: boolean; // back from the settings page afterwards
 }
 
 class EnergydashPanel extends LitElement {
@@ -30,6 +30,7 @@ class EnergydashPanel extends LitElement {
   declare narrow: boolean;
   declare _config: ConfigResult | null;
   declare _tab: Tab;
+  declare _settings: boolean; // settings page instead of the tabs
   declare _dialog: Dialog | null;
   declare _confirm: Confirm | null;
   declare _toast: string;
@@ -44,6 +45,7 @@ class EnergydashPanel extends LitElement {
     panel: { attribute: false },
     _config: { state: true },
     _tab: { state: true },
+    _settings: { state: true },
     _dialog: { state: true },
     _confirm: { state: true },
     _toast: { state: true },
@@ -61,6 +63,7 @@ class EnergydashPanel extends LitElement {
     this.narrow = false;
     this._config = null;
     this._tab = "dashboard";
+    this._settings = false;
     this._dialog = null;
     this._confirm = null;
     this._toast = "";
@@ -125,6 +128,11 @@ class EnergydashPanel extends LitElement {
     this._load();
   }
 
+  private _openSettings(open: boolean) {
+    this._settings = open;
+    window.scrollTo({ top: 0 });
+  }
+
   private _ask(c: Confirm) {
     this._confirm = c;
   }
@@ -135,6 +143,7 @@ class EnergydashPanel extends LitElement {
     this._confirm = null;
     try {
       await c.run();
+      if (c.leave) this._settings = false;
       this._done(c.toast);
     } catch (e) {
       this._showToast(t("c.error", { msg: String((e as Error).message ?? e) }));
@@ -172,11 +181,17 @@ class EnergydashPanel extends LitElement {
 
   render() {
     const cfg = this._config;
-    const toolbar = html`<div class="toolbar">
-      <ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>
-      <div class="title">Energydash</div>
-      ${cfg ? html`<button class="icon" aria-label=${t("c.settings")} title=${t("c.settings")} @click=${() => (this._dialog = { kind: "settings" })}><ha-icon icon="mdi:cog"></ha-icon></button>` : nothing}
-    </div>`;
+    const settings = !!cfg && this._settings;
+    const toolbar = settings
+      ? html`<div class="toolbar">
+          <button class="icon" aria-label=${t("c.back")} title=${t("c.back")} @click=${() => this._openSettings(false)}><ha-icon icon="mdi:arrow-left"></ha-icon></button>
+          <div class="title">${t("set.title")}</div>
+        </div>`
+      : html`<div class="toolbar">
+          <ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>
+          <div class="title">Energydash</div>
+          ${cfg ? html`<button class="icon" aria-label=${t("c.settings")} title=${t("c.settings")} @click=${() => this._openSettings(true)}><ha-icon icon="mdi:cog"></ha-icon></button>` : nothing}
+        </div>`;
     if (this._error && !cfg) return html`${toolbar}<div class="banner"><div class="alert bad"><ha-icon icon="mdi:alert-circle"></ha-icon>${t("c.error", { msg: this._error })}</div></div>`;
     if (!cfg) return html`${toolbar}<div class="banner"><p class="muted">${t("c.loading")}</p></div>`;
     const busy = Object.keys(cfg.status.busy).length > 0;
@@ -187,10 +202,16 @@ class EnergydashPanel extends LitElement {
       ["devices", t("tab.devices"), "mdi:power-plug-outline"],
     ];
     const ctx = this._ctx;
+    if (settings) {
+      return html`${toolbar}
+        ${busy ? html`<div class="banner"><div class="alert info"><ha-icon icon="mdi:progress-clock"></ha-icon>${t("busy")}</div></div>` : nothing}
+        ${this._renderSettings(ctx)}
+        ${this._renderOverlays()}`;
+    }
     return html`${toolbar}
       ${cfg.devices.length > 0 && !cfg.settings.contract
         ? html`<div class="banner"><div class="alert warn"><ha-icon icon="mdi:alert"></ha-icon><div class="grow">${t("p.need_price")}</div>
-            ${cfg.is_admin ? html`<button class="btn secondary" @click=${() => (this._dialog = { kind: "settings" })}>${t("p.need_price_btn")}</button>` : nothing}</div></div>`
+            ${cfg.is_admin ? html`<button class="btn secondary" @click=${() => this._openSettings(true)}>${t("p.need_price_btn")}</button>` : nothing}</div></div>`
         : nothing}
       ${busy && !this._onboarding ? html`<div class="banner"><div class="alert info"><ha-icon icon="mdi:progress-clock"></ha-icon>${t("busy")}</div></div>` : nothing}
       ${cfg.devices.length === 0 || this._onboarding
@@ -206,7 +227,11 @@ class EnergydashPanel extends LitElement {
               ${this._tab === "devices" ? html`<ed-devices .ctx=${ctx}></ed-devices>` : nothing}
             </main>`}
       ${this._renderDialog(ctx)}
-      ${this._confirm
+      ${this._renderOverlays()}`;
+  }
+
+  private _renderOverlays() {
+    return html`${this._confirm
         ? html`<ed-confirm .heading=${this._confirm.heading} .text=${this._confirm.text} .action=${this._confirm.action} .danger=${this._confirm.danger}
             @cancel=${() => (this._confirm = null)} @confirm=${this._runConfirm}></ed-confirm>`
         : nothing}
@@ -242,7 +267,12 @@ class EnergydashPanel extends LitElement {
         @delete-device=${() => this._ask({ heading: t("v.delete_q"), text: t("v.delete_text", { name: dev.name }), action: t("c.delete"), danger: true, run: () => api.deleteDevice(this.hass, dev.id!), toast: t("t.deleted") })}
       ></ed-device-dialog>`;
     }
-    return html`<ed-settings-dialog .ctx=${ctx} @closed=${close} @saved=${saved}
+    return nothing;
+  }
+
+  private _renderSettings(ctx: Ctx) {
+    return html`<ed-settings-page .ctx=${ctx} @closed=${() => this._openSettings(false)}
+      @saved=${(e: CustomEvent) => { this._openSettings(false); this._done(e.detail); }}
       @recalc-all=${() => this._ask({ heading: t("set.recalc_q"), text: t("set.recalc_q_text"), action: t("v.recalc"), danger: false, run: () => api.recalculate(this.hass), toast: t("t.recalc") })}
       @export-config=${async () => {
         const data = await api.exportConfig(this.hass);
@@ -252,14 +282,14 @@ class EnergydashPanel extends LitElement {
       @import-config=${(e: CustomEvent) => {
         const data = e.detail as { devices: unknown[] };
         this._ask({ heading: t("set.import_q"), text: t("set.import_q_text", { n: data.devices.length }), action: t("set.import_btn"), danger: true,
-          run: () => api.importConfig(this.hass, data as Record<string, unknown>, true), toast: t("t.imported", { n: data.devices.length }) });
+          run: () => api.importConfig(this.hass, data as Record<string, unknown>, true), toast: t("t.imported", { n: data.devices.length }), leave: true });
       }}
       @reset=${(e: CustomEvent) => {
         const all = e.detail === "all";
         this._ask({ heading: t(all ? "set.reset_q" : "set.clear_q"), text: t(all ? "set.reset_q_text" : "set.clear_q_text"), action: t(all ? "set.reset" : "set.clear"), danger: true,
-          run: () => api.reset(this.hass, all ? "all" : "data"), toast: t("t.reset") });
+          run: () => api.reset(this.hass, all ? "all" : "data"), toast: t("t.reset"), leave: true });
       }}
-    ></ed-settings-dialog>`;
+    ></ed-settings-page>`;
   }
 }
 
