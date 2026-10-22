@@ -1,0 +1,164 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Energydash",
+        "description": "Everything is calculated locally in Home Assistant; nothing is sent to the cloud. Suggestions come from your Energy dashboard.",
+        "data": {
+          "contract": "Type of contract",
+          "import_entity": "Import from the grid",
+          "solar_mode": "What does power from your own solar panels cost?",
+          "export_entity": "Export to the grid",
+          "solar_entity": "Solar production"
+        },
+        "data_description": {
+          "import_entity": "kWh counter of your smart meter (P1) for imported energy.",
+          "solar_mode": "Applies to all devices. Solar goes to the rest of the house first; only what is left counts as solar for the device.",
+          "export_entity": "Optional. Needed together with solar production to calculate the rest of the house.",
+          "solar_entity": "Optional. kWh counter of your inverter."
+        }
+      },
+      "prices": {
+        "title": "Electricity price",
+        "data": {
+          "price_entity": "Electricity price",
+          "export_price_entity": "Feed-in price",
+          "export_price_fixed": "Fixed feed-in price",
+          "price_normal": "Normal tariff",
+          "price_low": "Low tariff"
+        },
+        "data_description": {
+          "price_entity": "Sensor in €/kWh including taxes. A forecast attribute with quarter or hour prices is used automatically.",
+          "export_price_entity": "Optional. Without it the price excluding taxes from the forecast is used, if available.",
+          "export_price_fixed": "Optional. Used when there is no feed-in price entity or forecast.",
+          "price_low": "Weekdays 23:00-07:00 and weekends."
+        }
+      },
+      "reconfigure": {
+        "title": "Set up again",
+        "description": "Go through the setup again. You can also clear calculated data or start completely fresh.",
+        "data": {
+          "contract": "Type of contract",
+          "import_entity": "Import from the grid",
+          "solar_mode": "What does power from your own solar panels cost?",
+          "export_entity": "Export to the grid",
+          "solar_entity": "Solar production",
+          "reset": "Clear data"
+        }
+      },
+      "reconfigure_prices": {
+        "title": "Electricity price",
+        "data": {
+          "price_entity": "Electricity price",
+          "export_price_entity": "Feed-in price",
+          "export_price_fixed": "Fixed feed-in price",
+          "price_normal": "Normal tariff",
+          "price_low": "Low tariff"
+        }
+      }
+    },
+    "error": {
+      "price_not_numeric": "This entity has no numeric price. Choose a sensor in €/kWh."
+    },
+    "abort": {
+      "single_instance_allowed": "Energydash is already set up.",
+      "reconfigure_successful": "Saved."
+    },
+    "create_entry": {
+      "default": "Success! Energydash is set up. You can now find it in the sidebar."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Prices and solar",
+        "data": {
+          "contract": "Type of contract",
+          "import_entity": "Import from the grid",
+          "solar_mode": "What does power from your own solar panels cost?",
+          "export_entity": "Export to the grid",
+          "solar_entity": "Solar production"
+        },
+        "data_description": {
+          "solar_mode": "Applies to all devices, also to earlier results."
+        }
+      },
+      "prices": {
+        "title": "Electricity price",
+        "data": {
+          "price_entity": "Electricity price",
+          "export_price_entity": "Feed-in price",
+          "export_price_fixed": "Fixed feed-in price",
+          "price_normal": "Normal tariff",
+          "price_low": "Low tariff"
+        }
+      }
+    },
+    "error": {
+      "price_not_numeric": "This entity has no numeric price. Choose a sensor in €/kWh."
+    }
+  },
+  "selector": {
+    "contract": {
+      "options": {
+        "dynamic": "Dynamic contract - price per quarter or hour from an entity",
+        "fixed": "Fixed tariff - normal and low tariff"
+      }
+    },
+    "solar_mode": {
+      "options": {
+        "export": "What you would otherwise have received (feed-in price)",
+        "free": "Nothing",
+        "grid": "The same as power from the grid"
+      }
+    },
+    "reset": {
+      "options": {
+        "none": "Keep everything",
+        "data": "Clear calculated data, keep devices",
+        "all": "Start fresh: remove devices and data"
+      }
+    },
+    "reset_scope": {
+      "options": {
+        "data": "Calculated data only",
+        "all": "Devices and data"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cost_today": { "name": "Cost today" },
+      "cost_month": { "name": "Cost this month" },
+      "last_session": { "name": "Last session" },
+      "house_cost_today": { "name": "Whole house cost today" },
+      "rest_cost_today": { "name": "Rest of the house cost today" },
+      "baseload": { "name": "Baseload" }
+    }
+  },
+  "issues": {
+    "missing_entity": {
+      "title": "Energydash cannot find {entity_id}",
+      "description": "The entity {entity_id} does not exist (anymore). Choose another source in Energydash or restore the entity."
+    }
+  },
+  "exceptions": {
+    "not_loaded": { "message": "Energydash is not set up." }
+  },
+  "services": {
+    "recalculate": {
+      "name": "Recalculate",
+      "description": "Replace calculated results by a recalculation over the recorder history (usually 10 days).",
+      "fields": {
+        "device_id": { "name": "Device", "description": "Energydash device id. Empty: all devices and the house." }
+      }
+    },
+    "reset": {
+      "name": "Reset",
+      "description": "Clear calculated data, or also remove all devices.",
+      "fields": {
+        "scope": { "name": "What to clear", "description": "data: calculated data only. all: devices and data." }
+      }
+    }
+  }
+}

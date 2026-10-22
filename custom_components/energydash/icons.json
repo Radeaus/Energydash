@@ -1,0 +1,16 @@
+{
+  "entity": {
+    "sensor": {
+      "cost_today": { "default": "mdi:cash" },
+      "cost_month": { "default": "mdi:cash-multiple" },
+      "last_session": { "default": "mdi:timer-outline" },
+      "house_cost_today": { "default": "mdi:home-lightning-bolt-outline" },
+      "rest_cost_today": { "default": "mdi:home-outline" },
+      "baseload": { "default": "mdi:sleep" }
+    }
+  },
+  "services": {
+    "recalculate": { "service": "mdi:calculator-variant-outline" },
+    "reset": { "service": "mdi:restore" }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "energydash-panel",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/panel.ts --bundle --format=esm --minify --target=es2021 --legal-comments=none --outfile=../custom_components/energydash/frontend/energydash-panel.js",
+    "watch": "esbuild src/panel.ts --bundle --format=esm --target=es2021 --sourcemap=inline --watch --outfile=../custom_components/energydash/frontend/energydash-panel.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lit": "3.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "typescript": "5.9.2"
+  }
+}

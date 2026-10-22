@@ -1,0 +1,18 @@
+recalculate:
+  fields:
+    device_id:
+      required: false
+      example: wasmachine
+      selector:
+        text:
+reset:
+  fields:
+    scope:
+      required: true
+      default: data
+      selector:
+        select:
+          translation_key: reset_scope
+          options:
+            - data
+            - all

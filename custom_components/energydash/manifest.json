@@ -1,0 +1,15 @@
+{
+  "domain": "energydash",
+  "name": "Energydash",
+  "after_dependencies": ["energy"],
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["http", "frontend", "panel_custom", "websocket_api", "recorder"],
+  "documentation": "https://github.com/Radeaus/Energydash",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/Radeaus/Energydash/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "1.0.0"
+}

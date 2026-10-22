@@ -1,0 +1,236 @@
+# Export van automation.tesla_sessierapport (22 okt 2026)
+id: '0000000000000'
+alias: Tesla – sessierapport
+description: Meet per laadsessie hoeveel kWh uit zon en uit het net kwam en wat het kostte, en stuurt bij loskoppelen een push. Energie uit de kWh-teller van de laadpaal; zon/net per tellerstap via de P1-importteller;
+  kosten met tijdgewogen kwartierprijs. Zie docs/07-tesla-sessierapport.md.
+triggers:
+- entity_id: binary_sensor.controlekamer_tesla_model_3_oplaadkabel
+  id: start
+  to: 'on'
+  trigger: state
+- entity_id: sensor.charge_laadpaal_laadpaalstatus
+  id: start
+  to: VehicleDetected
+  trigger: state
+- entity_id: sensor.charge_laadpaal_laadpaal_energie_geleverd_sessie
+  id: kwh
+  not_to:
+  - unavailable
+  - unknown
+  trigger: state
+- entity_id: sensor.charge_laadpaal_laadpaal_sessiekosten
+  id: kosten
+  not_to:
+  - unavailable
+  - unknown
+  trigger: state
+- id: basis
+  minutes: /5
+  trigger: time_pattern
+- entity_id: binary_sensor.controlekamer_tesla_model_3_oplaadkabel
+  id: einde
+  to: 'off'
+  trigger: state
+- entity_id: sensor.charge_laadpaal_laadpaalstatus
+  id: einde
+  to: Standby
+  trigger: state
+actions:
+- choose:
+  - alias: 'Meting: stukje laadenergie splitsen in zon en net'
+    conditions:
+    - condition: trigger
+      id: kwh
+    - above: 0
+      condition: numeric_state
+      entity_id: sensor.charge_laadpaal_laadpaal_energie_geleverd_sessie
+    sequence:
+    - variables:
+        nieuw: '{{ trigger.to_state.state | float(0) }}'
+        vorig: '{{ states(''input_number.tesla_sessie_laatste_kwh'') | float(0) }}'
+        imp_nu: '{{ states(''sensor.p1_meter_energy_import'') | float(-1) }}'
+        imp_vorig: '{{ states(''input_number.tesla_meting_import_vorig'') | float(0) }}'
+        t1: '{{ as_timestamp(now()) }}'
+    - variables:
+        de: '{{ (nieuw - vorig) if nieuw >= vorig else nieuw }}'
+        t0: '{% set t = as_timestamp(states(''input_datetime.tesla_meting_tijd_vorig''), 0) %}{{ [t, t1 - 3600] | max if t > 0 and t < t1 - 30 else t1 - 300 }}'
+    - variables:
+        di: '{{ (imp_nu - imp_vorig) if (imp_nu >= 0 and imp_vorig > 0 and imp_nu >= imp_vorig) else de }}'
+    - variables:
+        net: '{{ [de, di] | min }}'
+    - variables:
+        zon: '{{ de - net }}'
+        prijs: '{% set ns = namespace(s=0, w=0) %}{% for q in state_attr(''sensor.zonneplan_current_quarter_hourly_electricity_tariff'', ''forecast'') or [] %}{% set a = as_timestamp(q.start_date) %}{%
+          set b = as_timestamp(q.end_date) %}{% set o = [b, t1] | min - [a, t0] | max %}{% if o > 0 %}{% set ns.s = ns.s + o * q.price_tax_included.amount / 10000000 %}{% set ns.w = ns.w + o %}{% endif
+          %}{% endfor %}{{ (ns.s / ns.w) if ns.w > 0 else states(''sensor.zonneplan_current_quarter_hourly_electricity_tariff'') | float(0) }}'
+    - action: input_number.set_value
+      data:
+        value: '{{ (states(''input_number.tesla_sessie_zon_kwh'') | float(0) + zon) | round(4) }}'
+      target:
+        entity_id: input_number.tesla_sessie_zon_kwh
+    - action: input_number.set_value
+      data:
+        value: '{{ (states(''input_number.tesla_sessie_net_kwh'') | float(0) + net) | round(4) }}'
+      target:
+        entity_id: input_number.tesla_sessie_net_kwh
+    - action: input_number.set_value
+      data:
+        value: '{{ (states(''input_number.tesla_sessie_netkosten'') | float(0) + net * prijs) | round(4) }}'
+      target:
+        entity_id: input_number.tesla_sessie_netkosten
+    - action: input_number.set_value
+      data:
+        value: '{{ (states(''input_number.tesla_sessie_kosten_alles_net'') | float(0) + de * prijs) | round(4) }}'
+      target:
+        entity_id: input_number.tesla_sessie_kosten_alles_net
+    - action: input_number.set_value
+      data:
+        value: '{{ nieuw }}'
+      target:
+        entity_id: input_number.tesla_sessie_laatste_kwh
+    - action: input_number.set_value
+      target:
+        entity_id: input_number.tesla_meting_import_vorig
+      data:
+        value: '{{ imp_nu if imp_nu >= 0 else imp_vorig }}'
+    - action: input_datetime.set_datetime
+      data:
+        timestamp: '{{ t1 }}'
+      target:
+        entity_id: input_datetime.tesla_meting_tijd_vorig
+  - alias: 'Basis: P1-teller verversen zolang er niet geladen wordt'
+    conditions:
+    - condition: trigger
+      id: basis
+    - condition: not
+      conditions:
+      - condition: state
+        entity_id: sensor.charge_laadpaal_laadpaalstatus
+        state: Charging
+    - above: 0
+      condition: numeric_state
+      entity_id: sensor.p1_meter_energy_import
+    sequence:
+    - action: input_number.set_value
+      data:
+        value: '{{ states(''sensor.p1_meter_energy_import'') | float }}'
+      target:
+        entity_id: input_number.tesla_meting_import_vorig
+    - action: input_datetime.set_datetime
+      data:
+        timestamp: '{{ as_timestamp(now()) }}'
+      target:
+        entity_id: input_datetime.tesla_meting_tijd_vorig
+  - alias: 'Start: begintijd vastleggen (en tellers leeg als er nog niets geladen is)'
+    conditions:
+    - condition: trigger
+      id: start
+    - below: 0.2
+      condition: numeric_state
+      entity_id: sensor.charge_laadpaal_laadpaal_energie_geleverd_sessie
+    sequence:
+    - action: input_datetime.set_datetime
+      data:
+        datetime: '{{ now().strftime(''%Y-%m-%d %H:%M:%S'') }}'
+      target:
+        entity_id: input_datetime.tesla_sessie_starttijd
+    - if:
+      - below: 0.001
+        condition: numeric_state
+        entity_id: sensor.charge_laadpaal_laadpaal_energie_geleverd_sessie
+      then:
+      - action: input_number.set_value
+        data:
+          value: 0
+        target:
+          entity_id:
+          - input_number.tesla_sessie_zon_kwh
+          - input_number.tesla_sessie_net_kwh
+          - input_number.tesla_sessie_netkosten
+          - input_number.tesla_sessie_kosten_alles_net
+          - input_number.tesla_sessie_laatste_kwh
+          - input_number.tesla_sessie_laatste_zonneplan_kosten
+  - alias: Zonneplan-sessiekosten bijhouden
+    conditions:
+    - condition: trigger
+      id: kosten
+    - above: 0
+      condition: numeric_state
+      entity_id: sensor.charge_laadpaal_laadpaal_sessiekosten
+    sequence:
+    - action: input_number.set_value
+      data:
+        value: '{{ states(''sensor.charge_laadpaal_laadpaal_sessiekosten'') | float(0) }}'
+      target:
+        entity_id: input_number.tesla_sessie_laatste_zonneplan_kosten
+  - alias: 'Einde: rapport sturen en tellers leegmaken'
+    conditions:
+    - condition: trigger
+      id: einde
+    sequence:
+    - variables:
+        alles_net: '{{ states(''input_number.tesla_sessie_kosten_alles_net'') | float(0) }}'
+        kwh_paal: '{{ states(''input_number.tesla_sessie_laatste_kwh'') | float(0) }}'
+        net: '{{ states(''input_number.tesla_sessie_net_kwh'') | float(0) }}'
+        netkosten: '{{ states(''input_number.tesla_sessie_netkosten'') | float(0) }}'
+        zon: '{{ states(''input_number.tesla_sessie_zon_kwh'') | float(0) }}'
+        zp_kosten: '{{ states(''input_number.tesla_sessie_laatste_zonneplan_kosten'') | float(0) }}'
+    - if:
+      - above: 0.3
+        condition: numeric_state
+        entity_id: input_number.tesla_sessie_laatste_kwh
+      then:
+      - variables:
+          totaal: '{{ [zon + net, 0.001] | max }}'
+          eur: '{{ ''%.2f'' | format(netkosten) | replace(''.'', '','') }}'
+          zp_txt: '{{ ''%.2f'' | format(zp_kosten) | replace(''.'', '','') }}'
+          alles_txt: '{{ ''%.2f'' | format(alles_net) | replace(''.'', '','') }}'
+          verschil: '{{ (zp_kosten - alles_net) | round(2) }}'
+          soc_txt: '{{ states(''sensor.controlekamer_tesla_model_3_batterijniveau'') | int(0) }}'
+      - variables:
+          zon_pct: '{{ (100 * zon / totaal) | round(0) | int }}'
+      - variables:
+          net_pct: '{{ 100 - zon_pct }}'
+      - action: notify.mobile_app_mijn_telefoon
+        data:
+          data:
+            group: tesla-laden
+            tag: tesla-sessie
+            url: /lovelace/auto
+          message: |-
+            ☀️ Zon: {{ zon | round(1) | string | replace('.', ',') }} kWh ({{ zon_pct }}%)
+            🔌 Net: {{ net | round(1) | string | replace('.', ',') }} kWh ({{ net_pct }}%) voor €{{ eur }}
+            💶 Zonneplan: €{{ zp_txt }} · alle kWh × kwartierprijs: €{{ alles_txt }}{% if zp_kosten > 0 and verschil | abs > 0.25 %}
+            ⚠️ Zonneplan wijkt €{{ '%.2f' | format(verschil | abs) | replace('.', ',') }} af van de kwartierprijzen{% endif %}
+          title: 'Tesla: {{ kwh_paal | round(1) | string | replace(''.'', '','') }} kWh geladen, accu {{ soc_txt }}%'
+      - action: input_text.set_value
+        data:
+          value: Niet ingeplugd
+        target:
+          entity_id: input_text.tesla_laad_status
+      - action: input_text.set_value
+        data:
+          value: laatste sessie {{ kwh_paal | round(1) | string | replace('.', ',') }} kWh · {{ zon_pct }}% zon · €{{ eur }} net
+        target:
+          entity_id: input_text.tesla_laad_detail
+      else:
+      - action: input_text.set_value
+        data:
+          value: Niet ingeplugd
+        target:
+          entity_id: input_text.tesla_laad_status
+    - action: input_number.set_value
+      alias: Tellers leeg zodat een tweede einde-trigger geen tweede push stuurt
+      data:
+        value: 0
+      target:
+        entity_id:
+        - input_number.tesla_sessie_zon_kwh
+        - input_number.tesla_sessie_net_kwh
+        - input_number.tesla_sessie_netkosten
+        - input_number.tesla_sessie_kosten_alles_net
+        - input_number.tesla_sessie_laatste_kwh
+        - input_number.tesla_sessie_laatste_zonneplan_kosten
+mode: queued
+trace:
+  stored_traces: 20
