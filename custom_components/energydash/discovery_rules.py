@@ -17,6 +17,8 @@ DERIVED_PLATFORMS = {
 }
 CHARGER_TOKENS = ("laadpaal", "charger", "wallbox", "evse", "laadstation", "easee", "zaptec", "alfen")
 SESSION_TOKENS = ("wasmachine", "washer", "washing", "droger", "dryer", "vaatwasser", "dishwasher", "oven", "airfryer", "magnetron")
+# Says whether the device is online, not whether it is in use: never a session source.
+CONNECTIVITY_TOKENS = ("verbinding", "connect", "online", "wifi", "rssi", "signal", "update", "firmware", "bereikbaar", "available")
 CONTINUOUS_TOKENS = ("server", "koelkast", "fridge", "vriezer", "freezer", "airco", "warmtepomp", "heat_pump", "heatpump", "router", "nas", "boiler", "aquarium")
 
 
@@ -105,3 +107,10 @@ def pick_power_entity(power: list[Candidate], device_id: str | None, stat_rate: 
         return None
     same.sort(key=lambda p: (bool(re.search(r"(fase|phase|_l[123]\b)", p.entity_id)), len(p.entity_id)))
     return same[0].entity_id
+
+
+def session_entity_rank(entity_id: str, device_class: str | None, same_device: bool) -> tuple:
+    """Sort key for session entities: same device first, connectivity last, then status-like names."""
+    low = entity_id.lower()
+    connectivity = device_class == "connectivity" or any(t in low for t in CONNECTIVITY_TOKENS)
+    return (connectivity, not same_device, "status" not in low, entity_id)

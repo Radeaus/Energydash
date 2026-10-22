@@ -8,7 +8,9 @@ import { t } from "./i18n";
 import { shared } from "./styles";
 import type { Ctx } from "./views";
 
-type Stage = "start" | "scan" | "list" | "saving" | "done";
+type Stage = "start" | "scan" | "list" | "saving" | "calc";
+const CALC_SKIP_AFTER_S = 20; // offer to go ahead while long recalculations still run
+const CALC_LEAVE_MS = 1200; // let the last check mark show before switching to the dashboard
 const SCAN_STEPS = ["ob.scan.prefs", "ob.scan.meters", "ob.scan.history"];
 const SCAN_TICK_MS = 900;
 
@@ -43,7 +45,9 @@ export class EdOnboarding extends LitElement {
   declare _days: number;
   declare _sel: Set<string>;
   declare _open: string | null;
-  declare _added: number;
+  declare _added: { id: string; name: string }[];
+  declare _calcSince: number;
+  declare _now: number;
   declare _error: string;
 
   static properties = {
@@ -55,6 +59,7 @@ export class EdOnboarding extends LitElement {
     _sel: { state: true },
     _open: { state: true },
     _added: { state: true },
+    _now: { state: true },
     _error: { state: true },
   };
 
@@ -65,7 +70,8 @@ export class EdOnboarding extends LitElement {
       .stack { display: grid; gap: 16px; }
       .hero { text-align: center; display: grid; justify-items: center; gap: 8px; padding: 32px 16px; }
       .hero > ha-icon { --mdc-icon-size: 64px; color: var(--ed-pri); margin-bottom: 8px; }
-      .hero > ha-icon.done { color: var(--ed-ok); }
+      .progress { height: 4px; border-radius: 2px; background: var(--ed-line); overflow: hidden; }
+      .progress i { display: block; height: 100%; background: var(--ed-pri); transition: width 0.4s; }
       .hero h2 { font-size: 24px; }
       .hero p { max-width: 42ch; }
       .hero .actions { display: grid; justify-items: center; gap: 4px; margin-top: 8px; }
@@ -106,7 +112,9 @@ export class EdOnboarding extends LitElement {
     this._days = 7;
     this._sel = new Set();
     this._open = null;
-    this._added = 0;
+    this._added = [];
+    this._calcSince = 0;
+    this._now = 0;
     this._error = "";
   }
 
@@ -159,19 +167,45 @@ export class EdOnboarding extends LitElement {
     this._error = "";
     try {
       const r = await api.saveDevices(this.ctx.hass, devices);
-      this._added = r.devices.length;
-      this._stage = "done";
+      this._added = r.devices.map((d) => ({ id: d.id!, name: d.name }));
+      this._calcSince = this._now = Date.now();
+      this._stage = "calc";
+      window.clearInterval(this._timer);
+      this._timer = window.setInterval(() => (this._now = Date.now()), 1000);
     } catch (e) {
       this._error = String((e as Error).message ?? e);
       this._stage = "list";
     }
   }
 
+  // A device is done once the panel's config knows it and it is no longer busy.
+  private _doneIds(): Set<string> {
+    const cfg = this.ctx.config;
+    const known = new Set(cfg.devices.map((d) => d.id));
+    return new Set(this._added.filter((a) => known.has(a.id) && !(a.id in cfg.status.busy)).map((a) => a.id));
+  }
+
+  private _leaving = false;
+
+  updated() {
+    if (this._stage !== "calc" || this._leaving) return;
+    const busy = Object.keys(this.ctx.config.status.busy).length > 0;
+    if (!busy && this._doneIds().size === this._added.length) {
+      this._leaving = true;
+      window.setTimeout(() => this._finish(), CALC_LEAVE_MS);
+    }
+  }
+
+  private _finish() {
+    window.clearInterval(this._timer);
+    fire(this, "finished");
+  }
+
   render() {
     const err = this._error ? html`<div class="alert bad"><ha-icon icon="mdi:alert-circle"></ha-icon>${t("c.error", { msg: this._error })}</div>` : nothing;
     const body = this._stage === "start" ? this._renderStart()
       : this._stage === "scan" ? this._renderScan()
-      : this._stage === "done" ? this._renderDone()
+      : this._stage === "calc" ? this._renderCalc()
       : this._renderList();
     return html`<div class="stack">${err}${body}</div>`;
   }
@@ -281,18 +315,31 @@ export class EdOnboarding extends LitElement {
       </div>`;
   }
 
-  private _renderDone() {
-    const n = this._added;
-    return html`<div class="card hero">
-        <ha-icon class="done" icon="mdi:check-circle"></ha-icon>
-        <h2>${n === 1 ? t("ob.done_one") : t("ob.done", { n })}</h2>
-        <p class="muted">${t("ob.done_text")}</p>
+  private _renderCalc() {
+    const done = this._doneIds();
+    const busy = this.ctx.config.status.busy;
+    const n = this._added.length;
+    const pct = Math.round((done.size / Math.max(n, 1)) * 100);
+    const slow = (this._now - this._calcSince) / 1000 > CALC_SKIP_AFTER_S;
+    return html`<div class="card stack" aria-live="polite">
+        <div>
+          <h2>${n === 1 ? t("ob.done_one") : t("ob.done", { n })}</h2>
+          <p class="muted">${t("ob.calc_text")}</p>
+        </div>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow=${pct}><i style="width:${pct}%"></i></div>
+        <div class="steps">${this._added.map((a) => {
+          const ok = done.has(a.id);
+          const running = busy[a.id] === "recalculating";
+          return html`<div class="step ${ok || running ? "" : "wait"}">
+            ${ok ? html`<ha-icon icon="mdi:check-circle"></ha-icon>` : running ? html`<span class="spin" aria-hidden="true"></span>` : html`<ha-icon icon="mdi:circle-outline"></ha-icon>`}
+            <span>${a.name}</span></div>`;
+        })}</div>
       </div>
       <div class="card stack" style="gap:12px">
         <div class="note"><ha-icon icon="mdi:weather-night"></ha-icon><span>${t("ob.done_baseload")}</span></div>
         <div class="note"><ha-icon icon="mdi:tune-variant"></ha-icon><span>${t("ob.done_adjust")}</span></div>
       </div>
-      <div class="foot"><button class="btn" @click=${() => fire(this, "finished")}>${t("ob.to_dashboard")}</button></div>`;
+      ${slow ? html`<div class="foot"><button class="btn text" @click=${() => this._finish()}>${t("ob.skip_wait")}</button></div>` : nothing}`;
   }
 }
 

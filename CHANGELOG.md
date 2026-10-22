@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.2 – 22 oktober 2026
+
+### Snelle start
+- Opgelost: een laadpaal kon de verbindingsstatus als sessie-entiteit krijgen, met "on" én "off" als sessiestatus. De sessie liep dan altijd ("Running now" zonder auto). Een sessie-entiteit moet nu een status overhouden waarin geen sessie loopt, en verbindingsstatussen komen als laatste in aanmerking (ook in de geavanceerde wizard).
+- Na **Toevoegen** volg je het terugrekenen per apparaat, en ga je vanzelf naar het dashboard als alles klaar is. Na 20 seconden kun je ook alvast gaan.
+
+**Laadpaal met "Running now" na 1.2.1:** open de laadpaal onder Apparaten → **Bewerken** en kies bij Sessie-entiteit de status van de laadpaal (bijvoorbeeld "Laadpaalstatus"), of verwijder hem en voeg hem opnieuw toe.
+
 ## 1.2.1 – 22 oktober 2026
 
 ### Paneel

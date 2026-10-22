@@ -198,7 +198,22 @@ async def ws_devices_save_many(hass, connection, msg):
         return
     finally:
         if saved:
-            coord.start_task(coord.async_recalculate([d["id"] for d in saved]), "quick_start")
+            # Busy right away, so the panel can wait for all of them; cleared even if recalculating fails early.
+            ids = [d["id"] for d in saved]
+            for dev_id in ids:
+                coord.busy[dev_id] = "waiting"
+            coord.notify()
+
+            async def recalc() -> None:
+                try:
+                    await coord.async_recalculate(ids)
+                finally:
+                    for dev_id in ids:
+                        if coord.busy.get(dev_id) == "waiting":
+                            coord.busy.pop(dev_id)
+                    coord.notify()
+
+            coord.start_task(recalc(), "quick_start")
     connection.send_result(msg["id"], {"devices": saved})
 
 

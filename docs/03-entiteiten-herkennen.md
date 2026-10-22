@@ -44,7 +44,7 @@ Voor elke gevonden meter (maximaal 20) draait dezelfde analyse als in de wizard:
 | `loose` | Hoort niet bij een apparaat en staat niet in het Energy-dashboard | nee |
 | `duplicate_charger` | Tweede laadpaal-teller naast een aangevinkte (meet dezelfde sessies) | nee |
 
-Een laadpaal krijgt sessies uit de status-entiteit als die gevonden wordt en er statussen zijn waarin de teller opliep; anders sessies uit het verbruik met "Klaar na" minstens 60 minuten. Doorlopende apparaten tonen het gemiddelde uit de teller (kWh per dag), niet uit de grafiekreeks.
+Een laadpaal krijgt sessies uit een status-entiteit als er statussen zijn waarin de teller opliep én er een status overblijft waarin geen sessie loopt ("on" en "off" samen telt niet). De snelle start probeert maximaal drie entiteiten. Verbindingsstatussen (`connectivity`, "verbinding", "online", …) staan in elke lijst onderaan: die zeggen of het apparaat bereikbaar is, niet of het laadt. Lukt het niet, dan sessies uit het verbruik met "Klaar na" minstens 60 minuten. Doorlopende apparaten tonen het gemiddelde uit de teller (kWh per dag), niet uit de grafiekreeks.
 
 ## Gegevenscheck (per gekozen bron)
 Wordt getoond in de wizard en bij het apparaat. Elke regel: status (ok / beperking / niet aanbevolen), waarde, gevolg in gewone taal.

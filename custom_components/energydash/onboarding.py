@@ -16,6 +16,20 @@ from .const import (
 
 CHARGER_OFF_DELAY_MIN = 60.0  # smart charging pauses for whole quarters; those stay one session
 SPARK_POINTS = 80
+SESSION_ENTITY_TRIES = 3
+INVALID_STATES = ("unavailable", "unknown", "none", "")
+
+
+def session_states_ok(suggested: list[str] | None, seen: list[str] | None) -> bool:
+    """A session needs a state where it is not running; 'on' and 'off' together means always running."""
+    active = {s for s in suggested or [] if s.lower() not in INVALID_STATES}
+    if not active:
+        return False
+    lows = {s.lower() for s in active}
+    if {"on", "off"} <= lows:
+        return False
+    idle = {s for s in seen or [] if s.lower() not in INVALID_STATES} - active
+    return bool(idle)
 
 
 def pick_type(candidate: dict[str, Any], analysis: dict[str, Any]) -> str:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "energydash"
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 
 PANEL_URL_PATH = "energydash"
 PANEL_COMPONENT = "energydash-panel"

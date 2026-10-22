@@ -188,7 +188,7 @@ class EnergydashPanel extends LitElement {
     ];
     const ctx = this._ctx;
     return html`${toolbar}
-      ${busy ? html`<div class="banner"><div class="alert info"><ha-icon icon="mdi:progress-clock"></ha-icon>${t("busy")}</div></div>` : nothing}
+      ${busy && !this._onboarding ? html`<div class="banner"><div class="alert info"><ha-icon icon="mdi:progress-clock"></ha-icon>${t("busy")}</div></div>` : nothing}
       ${cfg.devices.length === 0 || this._onboarding
         ? this._renderEmpty()
         : html`<nav role="tablist">${tabs.map(([id, label, icon]) => html`<button role="tab" aria-selected=${this._tab === id} @click=${() => this._setTab(id)}><ha-icon icon=${icon}></ha-icon>${label}</button>`)}</nav>

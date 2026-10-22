@@ -29,6 +29,7 @@ from .discovery_rules import (
     filter_candidates,
     is_periodic,
     pick_power_entity,
+    session_entity_rank,
     suggest_type,
 )
 from .history import (
@@ -42,7 +43,16 @@ from .history import (
     text_series,
     unit_of,
 )
-from .onboarding import assess, build_device, mark_duplicates, order, pick_type, summarize
+from .onboarding import (
+    SESSION_ENTITY_TRIES,
+    assess,
+    build_device,
+    mark_duplicates,
+    order,
+    pick_type,
+    session_states_ok,
+    summarize,
+)
 from .sessions import detect_power_sessions, suggest_power_settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -230,8 +240,9 @@ def session_entity_candidates(hass: HomeAssistant, energy_entity: str) -> list[d
         if same or (looks and any(t in low for t in CHARGER_TOKENS + ("tesla", "car", "auto", "was", "droger"))):
             options = state.attributes.get("options") or []
             out.append({"entity_id": state.entity_id, "name": state.attributes.get("friendly_name") or state.entity_id,
-                        "same_device": same, "state": state.state, "options": list(options)})
-    out.sort(key=lambda c: (not c["same_device"], "status" not in c["entity_id"], c["entity_id"]))
+                        "same_device": same, "state": state.state, "options": list(options),
+                        "rank": session_entity_rank(state.entity_id, state.attributes.get("device_class"), same)})
+    out.sort(key=lambda c: c.pop("rank"))
     return out[:30]
 
 
@@ -446,10 +457,13 @@ async def _suggest_one(hass: HomeAssistant, cand: dict[str, Any]) -> dict[str, A
     req = {"energy_entity": cand["entity_id"], "energy_is_power": cand["power_only"], "power_entity": None if cand["power_only"] else cand["power_entity"]}
     analysis = await async_analyze(hass, req)
     session_entity, session_states = None, None
-    if pick_type(cand, analysis) == TYPE_CHARGER and analysis["session_candidates"]:
-        session_entity = analysis["session_candidates"][0]["entity_id"]
-        with_entity = await async_analyze(hass, {**req, "session_entity": session_entity})
-        session_states = with_entity.get("session_suggested_states") or []
+    if pick_type(cand, analysis) == TYPE_CHARGER:
+        # First entity whose states really mark a session; otherwise sessions come from the power.
+        for option in analysis["session_candidates"][:SESSION_ENTITY_TRIES]:
+            with_entity = await async_analyze(hass, {**req, "session_entity": option["entity_id"]})
+            if session_states_ok(with_entity.get("session_suggested_states"), with_entity.get("session_states")):
+                session_entity, session_states = option["entity_id"], with_entity["session_suggested_states"]
+                break
     device = build_device(cand, analysis, session_entity, session_states)
     preview = await async_preview(hass, {**device, "days": ANALYZE_DAYS})
     summary = summarize(device, preview, ANALYZE_DAYS)

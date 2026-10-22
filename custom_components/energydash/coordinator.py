@@ -597,10 +597,15 @@ class EnergydashCoordinator:
         elif older and not any(k < hour_key(start, self.tz) for k in self.agg.hours.get(HOUSE_KEY, {})):
             # A first device: also fill the house before the window, so "Rest van het huis" works there.
             house_agg = Aggregator()
-            await self.hass.async_add_executor_job(
-                backfill_house, house_agg, older["imp"], older["solar"], older["prices"], self.tz, start
-            )
-            self.agg.hours.setdefault(HOUSE_KEY, {}).update(house_agg.hours.get(HOUSE_KEY, {}))
+            self.busy[HOUSE_KEY] = "recalculating"
+            self.notify()
+            try:
+                await self.hass.async_add_executor_job(
+                    backfill_house, house_agg, older["imp"], older["solar"], older["prices"], self.tz, start
+                )
+                self.agg.hours.setdefault(HOUSE_KEY, {}).update(house_agg.hours.get(HOUSE_KEY, {}))
+            finally:
+                self.busy.pop(HOUSE_KEY, None)
         self._save(archive=True)
         self.notify()
 

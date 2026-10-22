@@ -29,7 +29,7 @@ Doel: een nieuwe gebruiker heeft in twee klikken zijn apparaten, zonder te weten
 1. **Start**: icoon 64 px, kop **"Zien wat je apparaten kosten"**, één zin uitleg, knop **Wizard starten**, daaronder tekstknop **Geavanceerd instellen** (opent de wizard van flow 3). Onder de kaart de privacyzin. Geen beheerder: alleen uitleg.
 2. **Even zoeken…**: drie regels met vinkjes (Energy-dashboard lezen, stroommeters zoeken, historie bekijken), zodat het wachten iets vertelt.
 3. **Gevonden**: vinklijst. Aangevinkt staat alleen wat zeker goed is (regels in docs/03 "Snelle start"). Per regel: naam, soort en in één regel wat we vonden ("5 sessies in 7 dagen, gemiddeld 1,1 kWh", "Gemiddeld 48 W, 1,2 kWh per dag"). Uitklappen toont een mini-grafiek van het vermogen, de herkomst en **Aanpassen** (opent flow 3 met het voorstel). Daaronder **Ook gevonden**, niet aangevinkt, met de reden in één zin ("Meet in de auto: … Je laadpaal meet beter."). Knop **{n} apparaten toevoegen**.
-4. **Klaar**: "{n} apparaten toegevoegd", dat we terugrekenen, dat sluipverbruik al werkt zonder apparaat, en knop **Naar het dashboard**.
+4. **Terugrekenen**: "{n} apparaten toegevoegd", voortgangsbalk en per apparaat wachten / bezig / klaar, plus dat sluipverbruik al werkt zonder apparaat. Als alles klaar is, gaat het paneel vanzelf naar het dashboard. Duurt het langer dan 20 seconden, dan verschijnt de tekstknop **Alvast naar het dashboard**. De balk "Bezig met terugrekenen" bovenaan is in de snelle start verborgen.
 - Niets gevonden: "Geen stroommeters gevonden" met **Zelf een meter kiezen** (flow 3) en **Opnieuw zoeken**.
 - De snelle start blijft staan zolang hij loopt, ook als via Aanpassen al een apparaat is toegevoegd; die regel krijgt dan "Toegevoegd".
 

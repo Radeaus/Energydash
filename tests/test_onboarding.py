@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from edcore.onboarding import assess, build_device, mark_duplicates, order, pick_type, spark, summarize
+from edcore.discovery_rules import session_entity_rank
+from edcore.onboarding import assess, build_device, mark_duplicates, order, pick_type, session_states_ok, spark, summarize
 
 
 def cand(entity_id, name, **kw):
@@ -108,3 +109,24 @@ def test_second_charger_is_unchecked_and_order():
     assert items[2]["checked"] is True
     names = [i["device"]["name"] for i in order(items)]
     assert names == ["Laadpaal", "Server", "Wasmachine", "Tesla Model 3", "Wallbox"]
+
+
+def test_session_states_must_leave_an_idle_state():
+    # Charger connectivity sensor: counter rose while 'on' and 'off', so the session would never end.
+    assert not session_states_ok(["on", "off"], ["on", "off"])
+    assert not session_states_ok(["Charging", "Standby"], ["Charging", "Standby"])
+    assert not session_states_ok([], ["Charging", "Standby"])
+    assert not session_states_ok(["unavailable"], ["Charging", "Standby"])
+    assert session_states_ok(["Charging", "SuspendedEV"], ["Charging", "SuspendedEV", "Standby", "VehicleDetected"])
+    assert session_states_ok(["on"], ["on", "off"])
+
+
+def test_connectivity_entity_ranks_after_status():
+    ids = [
+        ("binary_sensor.charge_laadpaal_laadpaal_verbindingsstatus", "connectivity", True),
+        ("sensor.charge_laadpaal_laadpaalstatus", "enum", True),
+        ("binary_sensor.controlekamer_tesla_model_3_oplaadkabel", "plug", False),
+    ]
+    ranked = sorted(ids, key=lambda i: session_entity_rank(*i))
+    assert ranked[0][0] == "sensor.charge_laadpaal_laadpaalstatus"
+    assert ranked[-1][0] == "binary_sensor.charge_laadpaal_laadpaal_verbindingsstatus"
