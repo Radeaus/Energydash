@@ -1,10 +1,16 @@
 # Changelog
 
+## 1.0.2 – October 22, 2026
+
+### Improved
+
+- The Energydash icon is simpler: a white lightning bolt, centered on green, without the euro coin.
+
 ## 1.0.1 – October 22, 2026
 
 ### New
 
-- Energydash has its own icon: a white lightning bolt on green.
+- Energydash has its own icon: a green lightning bolt with a euro coin.
 
 ### Improved
 
