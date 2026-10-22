@@ -8,18 +8,23 @@
 import { ICONS } from "./icons.js";
 
 // ------------------------------------------------------------------ Home Assistant stand-ins
+// Like the real <ha-icon>, the icon is drawn in its own shadow DOM, so the panel's styles for
+// its own svg elements (charts, the energy flow) never reach it.
 class HaIcon extends HTMLElement {
   static get observedAttributes() { return ["icon"]; }
   set icon(v) { this.setAttribute("icon", v); }
   get icon() { return this.getAttribute("icon"); }
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" }).innerHTML = `<style>
+      :host { display: inline-flex; flex: none; width: var(--mdc-icon-size, 24px); height: var(--mdc-icon-size, 24px); vertical-align: middle; }
+      svg { width: 100%; height: 100%; fill: currentColor; }
+    </style><svg viewBox="0 0 24 24" aria-hidden="true"><path></path></svg>`;
+  }
   connectedCallback() { this._render(); }
   attributeChangedCallback() { this._render(); }
   _render() {
-    const path = ICONS[this.getAttribute("icon")] ?? ICONS["mdi:flash"];
-    this.style.display = "inline-flex";
-    this.style.width = this.style.height = "var(--mdc-icon-size, 24px)";
-    this.style.flex = "none";
-    this.innerHTML = `<svg viewBox="0 0 24 24" width="100%" height="100%" fill="currentColor" aria-hidden="true"><path d="${path}"></path></svg>`;
+    this.shadowRoot.querySelector("path").setAttribute("d", ICONS[this.getAttribute("icon")] ?? ICONS["mdi:flash"]);
   }
 }
 customElements.define("ha-icon", HaIcon);
@@ -73,8 +78,8 @@ const addDays = (s, n) => { const [y, m, d] = s.split("-").map(Number); const x 
 // ------------------------------------------------------------------ language and theme from the URL
 const params = new URLSearchParams(location.search);
 const LANGS = { en: "English", nl: "Nederlands", de: "Deutsch", es: "Español", fr: "Français" };
-const browser = (navigator.language || "en").slice(0, 2);
-let LANG = params.get("lang") in LANGS ? params.get("lang") : browser in LANGS ? browser : "en";
+// English unless the visitor picks another language (kept in the URL, so a link can share it).
+let LANG = params.get("lang") in LANGS ? params.get("lang") : "en";
 let DARK = params.has("dark") ? params.get("dark") === "1" : matchMedia("(prefers-color-scheme: dark)").matches;
 let CURRENCY = "EUR";
 

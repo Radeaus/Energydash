@@ -1,10 +1,22 @@
 # Energydash for Home Assistant
 
+<p align="center">
+  <img src="custom_components/energydash/brand/icon@2x.png" width="112" alt="">
+</p>
+
+<p align="center">
+  <a href="https://radeaus.github.io/Energydash/"><img src="https://img.shields.io/badge/Try_the_live_demo-03a9f4?style=for-the-badge&logo=homeassistant&logoColor=white" alt="Try the live demo" height="40"></a>
+</p>
+
+<p align="center">
+  <b>See what every device costs, before you install anything.</b><br>
+  The <a href="https://radeaus.github.io/Energydash/">live demo</a> runs the real panel with a simulated household in your browser.<br>
+  Click around, add a device, or switch the language. No Home Assistant needed.
+</p>
+
 Energydash is a custom integration for [Home Assistant](https://www.home-assistant.io/) with its own panel in the sidebar. The panel shows what electricity costs per device: per wash cycle, per charging session, per day, and in baseload. Costs are calculated with your own dynamic or fixed electricity price, and power from your solar panels is accounted for separately in every measurement step.
 
 For example, you can see what a car charging session cost, how much of it came from your own solar panels, and which part of your bill belongs to the rest of the house.
-
-To look around first, open the [demo](https://radeaus.github.io/Energydash/). It runs the real panel with a simulated household in your browser, without Home Assistant.
 
 Energydash works in any country and currency that Home Assistant supports. It is available in English, Dutch, German, Spanish, and French, and follows the language of your Home Assistant profile.
 
