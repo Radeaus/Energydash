@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.1 – October 22, 2026
+
+### New
+
+- Energydash has its own icon: a green lightning bolt with a euro coin.
+
+### Improved
+
+- The step count in the quick start now covers the whole wizard, including choosing devices and calculating them back, instead of only the first steps.
+- A progress bar under the header shows how far along you are in the quick start.
+
 ## 1.0.0 – October 22, 2026
 
 First version.
