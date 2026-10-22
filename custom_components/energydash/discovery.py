@@ -27,8 +27,10 @@ from .discovery_rules import (
     DERIVED_PLATFORMS,
     Candidate,
     filter_candidates,
+    grid_suggestions,
     is_periodic,
     pick_power_entity,
+    pick_price_entity,
     session_entity_rank,
     suggest_type,
 )
@@ -54,6 +56,7 @@ from .onboarding import (
     summarize,
 )
 from .sessions import detect_power_sessions, suggest_power_settings
+from .settings import entity_ids
 
 _LOGGER = logging.getLogger(__name__)
 ANALYZE_DAYS = 7
@@ -84,39 +87,18 @@ def _collect_stats(obj: Any, out: set[str]) -> None:
             _collect_stats(item, out)
 
 
-def _grid_suggestions(prefs: dict[str, Any]) -> dict[str, str | None]:
-    found: dict[str, str | None] = {CONF_IMPORT_ENTITY: None, CONF_EXPORT_ENTITY: None, CONF_SOLAR_ENTITY: None, "price": None}
+async def async_suggest_settings(hass: HomeAssistant) -> dict[str, Any]:
+    """Starting values from the Energy dashboard: meters, and a price entity to suggest.
 
-    def walk(obj: Any, kind: str | None) -> None:
-        if isinstance(obj, dict):
-            kind = obj.get("type", kind)
-            for key, value in obj.items():
-                if not isinstance(value, str):
-                    walk(value, kind)
-                elif key == "stat_energy_from" and kind == "grid" and not found[CONF_IMPORT_ENTITY]:
-                    found[CONF_IMPORT_ENTITY] = value
-                elif key == "stat_energy_to" and kind == "grid" and not found[CONF_EXPORT_ENTITY]:
-                    found[CONF_EXPORT_ENTITY] = value
-                elif key == "stat_energy_from" and kind == "solar" and not found[CONF_SOLAR_ENTITY]:
-                    found[CONF_SOLAR_ENTITY] = value
-                elif key == "entity_energy_price" and kind == "grid" and not found["price"]:
-                    found["price"] = value
-        elif isinstance(obj, list):
-            for item in obj:
-                walk(item, kind)
-
-    walk(prefs.get("energy_sources") or [], None)
-    return found
-
-
-async def async_suggest_settings(hass: HomeAssistant) -> dict[str, str | None]:
-    """Defaults for the config flow, taken from the Energy dashboard."""
-    found = _grid_suggestions(await async_energy_prefs(hass))
-    # A quarter-hour price entity with a forecast beats the Energy dashboard's hourly one.
-    for state in hass.states.async_all("sensor"):
-        if "quarter" in state.entity_id and "tariff" in state.entity_id and "forecast" in state.attributes:
-            found["price"] = state.entity_id
-            break
+    The type of price (entity or fixed) and the export price are never assumed: the user chooses
+    them in the panel's quick start (docs/04).
+    """
+    found = grid_suggestions(await async_energy_prefs(hass))
+    if not found["price_entity"]:
+        found["price_entity"] = pick_price_entity([
+            (st.entity_id, st.attributes.get("unit_of_measurement"), dict(st.attributes), st.state)
+            for st in hass.states.async_all("sensor")
+        ])
     return found
 
 
@@ -129,8 +111,7 @@ async def async_discover(hass: HomeAssistant, settings: dict[str, Any], used: se
     excluded: set[str] = set()
     _collect_stats(prefs.get("energy_sources") or [], excluded)
     for key in (CONF_IMPORT_ENTITY, CONF_EXPORT_ENTITY, CONF_SOLAR_ENTITY):
-        if settings.get(key):
-            excluded.add(settings[key])
+        excluded.update(entity_ids(settings.get(key)))
     excluded_devices = set()
     for eid in excluded:
         entry = ent_reg.async_get(eid)

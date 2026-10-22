@@ -1,21 +1,17 @@
 // Dialogs: add/edit device wizard, device details, prices-and-solar settings with test tools.
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
-import { api, type Analysis, type Candidate, type Check, type Device, type DeviceType, type Preview, type Settings, type StepLog } from "./api";
-import { anySensorFilter, define, energyFilter, energyOnlyFilter, fire, powerFilter, sessionFilter, type EntityOption } from "./components";
+import { api, meterIds, type Analysis, type Candidate, type Check, type Device, type DeviceType, type Preview, type Settings, type StepLog } from "./api";
+import { define, energyFilter, fire, powerFilter, radio, sessionFilter, type EntityOption } from "./components";
 import { DEVICE_LIGHT, dateTime, deviceColor, eur, num, time } from "./format";
 import { t } from "./i18n";
+import "./settings-form";
+import { toSave, withAnswers } from "./settings-form";
 import { shared } from "./styles";
 import { TYPE_ICON, deviceInfo, ruleText, type Ctx } from "./views";
 
 type Step = "pick" | "type" | "sources" | "tune";
 const CHARGER_OFF_DELAY_MIN = 60;
-
-function radio(checked: boolean, title: string, text: string, onClick: () => void): TemplateResult {
-  return html`<button class="radio" role="radio" aria-checked=${checked} @click=${onClick}>
-    <span class="dot"></span><div><b>${title}</b><span>${text}</span></div>
-  </button>`;
-}
 
 export function checkRow(c: Check): TemplateResult {
   const icon = c.level === "ok" ? "mdi:check-circle" : c.level === "warn" ? "mdi:alert" : "mdi:close-circle";
@@ -521,7 +517,7 @@ export class EdDeviceDialog extends LitElement {
         <span>${t("v.row_energy")}</span><span class="mono">${d.energy_entity}${d.energy_is_power ? ` (${t("chip.power")})` : ""}</span>
         ${d.power_entity && !d.energy_is_power ? html`<span>${t("v.row_power")}</span><span class="mono">${d.power_entity}</span>` : nothing}
         <span>${t("v.row_sessions")}</span><span>${ruleText(this.ctx, d)}</span>
-        <span>${t("v.row_solar")}</span><span>${t("v.solar_rule", { entity: this.ctx.config.settings.import_entity })}</span>
+        <span>${t("v.row_solar")}</span><span>${t("v.solar_rule", { entity: meterIds(this.ctx.config.settings.import_entity).join(" + ") })}</span>
         <span>${t("c.today")}</span><span>${eur(n?.today.cost)} · ${num(n?.today.kwh, 2)} kWh</span>
         <span>${t("c.this_month")}</span><span>${eur(n?.month.cost)} · ${num(n?.month.kwh, 2)} kWh · ${n && n.month.kwh > 0 ? Math.round((n.month.zon / n.month.kwh) * 100) : 0}% ${t("s.solar").toLowerCase()}</span>
       </div>
@@ -548,42 +544,40 @@ export class EdDeviceDialog extends LitElement {
 export class EdSettingsDialog extends LitElement {
   declare ctx: Ctx;
   declare _s: Settings;
+  declare _valid: boolean;
   declare _saving: boolean;
   declare _error: string;
 
-  static properties = { ctx: { attribute: false }, _s: { state: true }, _saving: { state: true }, _error: { state: true } };
-  static styles = [shared, css`.radios { display: grid; gap: 8px; } .tool { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--ed-line); } .tool .grow > b { font-weight: 500; }`];
+  static properties = { ctx: { attribute: false }, _s: { state: true }, _valid: { state: true }, _saving: { state: true }, _error: { state: true } };
+  static styles = [shared, css`.tool { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--ed-line); } .tool .grow > b { font-weight: 500; }`];
+  private _start = "";
 
   constructor() {
     super();
     this._saving = false;
+    this._valid = false;
     this._error = "";
   }
 
   connectedCallback() {
     super.connectedCallback();
-    this._s = { ...this.ctx.config.settings };
+    this._s = withAnswers(this.ctx.config.settings);
+    this._start = JSON.stringify(toSave(this._s));
   }
 
-  private _set(patch: Partial<Settings>) {
-    this._s = { ...this._s, ...patch };
-  }
-
+  // Other prices or meters change every result: recalculate the history right away.
   private async _save() {
     this._saving = true;
     this._error = "";
     try {
-      await api.saveSettings(this.ctx.hass, this._s);
-      fire(this, "saved", t("t.saved"));
+      const value = toSave(this._s);
+      const changed = JSON.stringify(value) !== this._start;
+      await api.saveSettings(this.ctx.hass, value, changed);
+      fire(this, "saved", t(changed ? "t.saved_recalc" : "t.saved"));
     } catch (e) {
       this._error = String((e as Error).message ?? e);
       this._saving = false;
     }
-  }
-
-  private _num(v: string): number | null {
-    const n = Number(v.replace(",", "."));
-    return v.trim() === "" || Number.isNaN(n) ? null : n;
   }
 
   private _import() {
@@ -605,49 +599,12 @@ export class EdSettingsDialog extends LitElement {
   }
 
   render() {
-    const s = this._s;
-    const hass = this.ctx.hass;
     const admin = this.ctx.config.is_admin;
-    const st = this.ctx.config.status;
-    const opt = (id: string | null | undefined): EntityOption[] => (id && hass.states[id] ? [anySensorFilter(hass.states[id])!] : []);
-    const price = s.contract === "dynamic";
-    const valid = !!s.import_entity && (price ? !!s.price_entity : s.price_normal !== null && s.price_normal !== undefined);
     return html`<ed-dialog .heading=${t("set.title")} @closed=${() => fire(this, "closed")}>
       ${!admin ? html`<div class="alert info"><ha-icon icon="mdi:information"></ha-icon>${t("c.admin_only")}</div>` : nothing}
       ${this._error ? html`<div class="alert bad"><ha-icon icon="mdi:alert-circle"></ha-icon>${t("c.error", { msg: this._error })}</div>` : nothing}
-      <div>
-        <div style="font-weight:500;font-size:14px;margin-bottom:6px">${t("set.contract")} *</div>
-        <div class="radios" role="radiogroup">
-          ${radio(price, t("set.dynamic"), t("set.dynamic_text"), () => this._set({ contract: "dynamic" }))}
-          ${radio(!price, t("set.fixed"), t("set.fixed_text"), () => this._set({ contract: "fixed" }))}
-        </div>
-      </div>
-      ${price
-        ? html`<ed-entity-select .hass=${hass} .label=${t("set.price_entity")} .help=${t("set.price_entity_help")} required .value=${s.price_entity ?? null} .options=${opt(s.price_entity)} .filter=${anySensorFilter}
-              @value-changed=${(e: CustomEvent) => this._set({ price_entity: e.detail.value })}></ed-entity-select>
-            <div class="help">${t("set.price_status")}: ${st.price_attribute ? t("set.forecast_found", { attr: st.price_attribute }) + (st.price_scale !== 1 ? t("set.forecast_scaled", { scale: st.price_scale }) : "") : t("set.forecast_none")}${st.price_current !== null ? ` · ${eur(st.price_current, 4)}/kWh` : ""}</div>`
-        : html`<div class="row wrap">
-            <label class="field grow"><span class="lbl">${t("set.normal")} *</span><input class="input" inputmode="decimal" .value=${s.price_normal == null ? "" : String(s.price_normal)} @change=${(e: Event) => this._set({ price_normal: this._num((e.target as HTMLInputElement).value) })} /></label>
-            <label class="field grow"><span class="lbl">${t("set.low")} *</span><input class="input" inputmode="decimal" .value=${s.price_low == null ? "" : String(s.price_low)} @change=${(e: Event) => this._set({ price_low: this._num((e.target as HTMLInputElement).value) })} /><span class="help">${t("set.low_help")}</span></label>
-          </div>`}
-      <ed-entity-select .hass=${hass} .label=${t("set.import")} .help=${t("set.import_help")} required .value=${s.import_entity} .options=${opt(s.import_entity)} .filter=${energyOnlyFilter}
-        @value-changed=${(e: CustomEvent) => this._set({ import_entity: e.detail.value })}></ed-entity-select>
-      <ed-entity-select .hass=${hass} .label=${t("set.export")} allowNone .value=${s.export_entity ?? null} .options=${opt(s.export_entity)} .filter=${energyOnlyFilter}
-        @value-changed=${(e: CustomEvent) => this._set({ export_entity: e.detail.value })}></ed-entity-select>
-      <ed-entity-select .hass=${hass} .label=${t("set.solar")} .help=${t("set.solar_help")} allowNone .value=${s.solar_entity ?? null} .options=${opt(s.solar_entity)} .filter=${energyOnlyFilter}
-        @value-changed=${(e: CustomEvent) => this._set({ solar_entity: e.detail.value })}></ed-entity-select>
-      <div>
-        <div style="font-weight:500;font-size:14px;margin-bottom:6px">${t("set.solar_mode")} *</div>
-        <div class="radios" role="radiogroup">
-          ${(["export", "free", "grid"] as const).map((m) => radio(s.solar_mode === m, t(`set.mode.${m}`), t(`set.mode.${m}_text`), () => this._set({ solar_mode: m })))}
-        </div>
-        <div class="help" style="margin-top:6px">${t("set.solar_mode_help")}</div>
-      </div>
-      ${s.solar_mode === "export"
-        ? html`${price ? html`<ed-entity-select .hass=${hass} .label=${t("set.export_price_entity")} .help=${t("set.export_price_entity_help")} allowNone .value=${s.export_price_entity ?? null} .options=${opt(s.export_price_entity)} .filter=${anySensorFilter}
-              @value-changed=${(e: CustomEvent) => this._set({ export_price_entity: e.detail.value })}></ed-entity-select>` : nothing}
-            <label class="field"><span class="lbl">${t("set.export_price_fixed")}</span><input class="input" inputmode="decimal" .value=${s.export_price_fixed == null ? "" : String(s.export_price_fixed)} @change=${(e: Event) => this._set({ export_price_fixed: this._num((e.target as HTMLInputElement).value) })} /><span class="help">${t("set.export_price_fixed_help")}</span></label>`
-        : nothing}
+      <ed-settings-form .hass=${this.ctx.hass} .config=${this.ctx.config} .value=${this._s} section="all"
+        @change=${(e: CustomEvent) => { this._s = e.detail.value; this._valid = e.detail.valid; }}></ed-settings-form>
       ${admin
         ? html`<div>
             <h3 style="margin-top:8px">${t("set.test")}</h3>
@@ -656,17 +613,15 @@ export class EdSettingsDialog extends LitElement {
               <button class="btn secondary" @click=${() => fire(this, "recalc-all")}>${t("v.recalc")}</button></div>
             <div class="tool"><ha-icon icon="mdi:file-export-outline"></ha-icon><div class="grow"><b>${t("set.export_btn")} / ${t("set.import_btn").toLowerCase()}</b><div class="help">${t("set.backup_text")}</div></div>
               <div class="row wrap" style="justify-content:flex-end"><button class="btn secondary" @click=${() => fire(this, "export-config")}>${t("set.export_btn")}</button><button class="btn secondary" @click=${this._import}>${t("set.import_btn")}</button></div></div>
-            <div class="tool"><ha-icon icon="mdi:restart"></ha-icon><div class="grow"><b>${t("set.reflow")}</b><div class="help">${t("set.reflow_text")}</div></div>
-              <a class="btn secondary" style="text-decoration:none" href="/config/integrations/integration/energydash">${t("set.reflow_btn")}</a></div>
             <div class="tool"><ha-icon icon="mdi:eraser"></ha-icon><div class="grow"><b>${t("set.clear")}</b><div class="help">${t("set.clear_text")}</div></div>
               <button class="btn danger-text" @click=${() => fire(this, "reset", "data")}>${t("set.clear")}</button></div>
             <div class="tool"><ha-icon icon="mdi:backup-restore"></ha-icon><div class="grow"><b>${t("set.reset")}</b><div class="help">${t("set.reset_text")}</div></div>
               <button class="btn danger-text" @click=${() => fire(this, "reset", "all")}>${t("set.reset")}</button></div>
-            <p class="muted small">${t("set.version", { v: this.ctx.config.version })} · ${t("local")}</p>
+            <p class="muted small">${t("set.version", { v: this.ctx.config.version })}</p>
           </div>`
         : nothing}
       <button slot="footer" class="btn secondary" @click=${() => fire(this, "closed")}>${t("c.cancel")}</button>
-      ${admin ? html`<button slot="footer" class="btn" ?disabled=${!valid || this._saving} @click=${this._save}>${t("c.save")}</button>` : nothing}
+      ${admin ? html`<button slot="footer" class="btn" ?disabled=${!this._valid || this._saving} @click=${this._save}>${t("c.save")}</button>` : nothing}
     </ed-dialog>`;
   }
 }

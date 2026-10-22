@@ -1,14 +1,18 @@
-// <ed-onboarding>: quick start shown while there are no devices. Finds meters, sets them up and adds them in one go.
+// <ed-onboarding>: quick start shown while there are no devices. First the electricity price and meters
+// (asked, never assumed), then it finds the devices, sets them up and adds them in one go.
 
 import { LitElement, css, html, nothing, svg, type TemplateResult } from "lit";
-import { api, type Suggestion } from "./api";
+import { api, meterIds, type Settings, type Suggestion } from "./api";
 import { define, fire } from "./components";
 import { num } from "./format";
 import { t } from "./i18n";
+import "./settings-form";
+import { needsSolar, toSave, withAnswers } from "./settings-form";
 import { shared } from "./styles";
 import type { Ctx } from "./views";
 
-type Stage = "start" | "scan" | "list" | "saving" | "calc";
+type Stage = "start" | "price" | "meters" | "solar" | "scan" | "list" | "saving" | "calc";
+type SetupStep = "price" | "meters" | "solar";
 const CALC_SKIP_AFTER_S = 20; // offer to go ahead while long recalculations still run
 const CALC_LEAVE_MS = 1200; // let the last check mark show before switching to the dashboard
 const SCAN_STEPS = ["ob.scan.prefs", "ob.scan.meters", "ob.scan.history"];
@@ -49,6 +53,9 @@ export class EdOnboarding extends LitElement {
   declare _calcSince: number;
   declare _now: number;
   declare _error: string;
+  declare _s: Settings | null;
+  declare _valid: boolean;
+  declare _storing: boolean;
 
   static properties = {
     ctx: { attribute: false },
@@ -61,6 +68,9 @@ export class EdOnboarding extends LitElement {
     _added: { state: true },
     _now: { state: true },
     _error: { state: true },
+    _s: { state: true },
+    _valid: { state: true },
+    _storing: { state: true },
   };
 
   static styles = [
@@ -75,7 +85,6 @@ export class EdOnboarding extends LitElement {
       .hero h2 { font-size: 24px; }
       .hero p { max-width: 42ch; }
       .hero .actions { display: grid; justify-items: center; gap: 4px; margin-top: 8px; }
-      .local { text-align: center; }
       .steps { display: grid; gap: 14px; padding: 8px 0; }
       .step { display: flex; gap: 12px; align-items: center; }
       .step ha-icon { --mdc-icon-size: 22px; color: var(--ed-ok); flex: none; }
@@ -98,6 +107,8 @@ export class EdOnboarding extends LitElement {
       .foot .btn:not(.text) { width: 100%; justify-content: center; }
       .note { display: flex; gap: 10px; align-items: flex-start; }
       .note ha-icon { --mdc-icon-size: 20px; color: var(--ed-pri); flex: none; }
+      .nav { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+      .count { font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ed-text2); }
       @media (max-width: 480px) { .more { padding-left: 0; } }
     `,
   ];
@@ -116,7 +127,13 @@ export class EdOnboarding extends LitElement {
     this._calcSince = 0;
     this._now = 0;
     this._error = "";
+    this._s = null;
+    this._valid = false;
+    this._storing = false;
   }
+
+  private _after: "scan" | "advanced" = "scan";
+  private _hadMeters = false;
 
   disconnectedCallback() {
     super.disconnectedCallback();
@@ -127,6 +144,70 @@ export class EdOnboarding extends LitElement {
     return new Set(this.ctx.config.devices.map((d) => d.energy_entity));
   }
 
+  // ------------------------------------------------------------- price and meters
+  private get _setupSteps(): SetupStep[] {
+    return this._s && needsSolar(this._s) ? ["price", "meters", "solar"] : ["price", "meters"];
+  }
+
+  private _begin(after: "scan" | "advanced") {
+    this._after = after;
+    this._s = withAnswers(this.ctx.config.settings);
+    this._hadMeters = meterIds(this._s.import_entity).length > 0;
+    this._error = "";
+    this._stage = "price";
+  }
+
+  private _advanced() {
+    if (this.ctx.config.settings.contract) fire(this, "advanced");
+    else this._begin("advanced");
+  }
+
+  private _move(delta: number) {
+    const steps = this._setupSteps;
+    const i = steps.indexOf(this._stage as SetupStep) + delta;
+    if (i < 0) this._stage = "start";
+    else if (i >= steps.length) this._storeSettings();
+    else this._stage = steps[i];
+  }
+
+  private async _storeSettings() {
+    this._storing = true;
+    this._error = "";
+    try {
+      await api.saveSettings(this.ctx.hass, toSave(this._s!), true);
+      this._storing = false;
+      if (this._after === "scan") await this._scan();
+      else {
+        this._stage = "start";
+        fire(this, "advanced");
+      }
+    } catch (e) {
+      this._storing = false;
+      this._error = String((e as Error).message ?? e);
+    }
+  }
+
+  private _renderSetup(step: SetupStep) {
+    const steps = this._setupSteps;
+    const last = steps.indexOf(step) === steps.length - 1;
+    const intro = step === "meters" && !this._hadMeters ? t("ob.meters_none") : t(`ob.${step}_text`);
+    return html`<div class="card stack">
+        <div>
+          <div class="count">${t("ob.step", { n: steps.indexOf(step) + 1, total: steps.length })}</div>
+          <h2>${t(`ob.${step}`)}</h2>
+          <p class="muted">${intro}</p>
+        </div>
+        <ed-settings-form .hass=${this.ctx.hass} .config=${this.ctx.config} .value=${this._s} section=${step}
+          @change=${(e: CustomEvent) => { this._s = e.detail.value; this._valid = e.detail.valid; }}></ed-settings-form>
+      </div>
+      <div class="nav">
+        <button class="btn text" @click=${() => this._move(-1)}>${t("c.back")}</button>
+        <button class="btn" ?disabled=${!this._valid || this._storing} @click=${() => this._move(1)}>
+          ${this._storing ? t("ob.storing") : last ? t(this._after === "scan" ? "ob.save_scan" : "c.save") : t("c.next")}</button>
+      </div>`;
+  }
+
+  // ------------------------------------------------------------------ devices
   private async _scan() {
     fire(this, "started");
     this._stage = "scan";
@@ -204,6 +285,7 @@ export class EdOnboarding extends LitElement {
   render() {
     const err = this._error ? html`<div class="alert bad"><ha-icon icon="mdi:alert-circle"></ha-icon>${t("c.error", { msg: this._error })}</div>` : nothing;
     const body = this._stage === "start" ? this._renderStart()
+      : this._stage === "price" || this._stage === "meters" || this._stage === "solar" ? this._renderSetup(this._stage)
       : this._stage === "scan" ? this._renderScan()
       : this._stage === "calc" ? this._renderCalc()
       : this._renderList();
@@ -218,12 +300,11 @@ export class EdOnboarding extends LitElement {
         <p class="muted">${t("ob.text")}</p>
         ${admin
           ? html`<div class="actions">
-              <button class="btn" @click=${this._scan}><ha-icon icon="mdi:auto-fix"></ha-icon>${t("ob.start")}</button>
-              <button class="btn text" @click=${() => fire(this, "advanced")}>${t("ob.advanced")}</button>
+              <button class="btn" @click=${() => this._begin("scan")}><ha-icon icon="mdi:auto-fix"></ha-icon>${t("ob.start")}</button>
+              <button class="btn text" @click=${this._advanced}>${t("ob.advanced")}</button>
             </div>`
           : html`<p class="muted small">${t("c.admin_only")}</p>`}
-      </div>
-      <p class="muted small local">${t("local")}</p>`;
+      </div>`;
   }
 
   private _renderScan() {

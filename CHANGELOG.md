@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.2.5 – 22 oktober 2026
+
+### Je stroomprijs: gevraagd, niet aangenomen
+- De snelle start vraagt eerst hoe je je stroomprijs wilt invoeren: **Prijs uit een entiteit** of **Vaste prijs**. Niets staat vooraf aangevinkt; Energydash nam eerder stilzwijgend een dynamisch contract aan.
+- Bij een prijs-entiteit: "Is dit de prijs die je echt betaalt?" Zo niet (bijvoorbeeld een kale beursprijs van Nord Pool of ENTSO-e), dan vul je een **opslag per kWh** in die er bij elke prijs bij komt.
+- Bij een vaste prijs: **één prijs** of **normaal en dal**. Wie één tarief heeft, hoeft niet meer twee keer dezelfde prijs in te vullen.
+- Nieuwe vraag **Wat krijg je voor stroom die je teruglevert?**: hetzelfde als de stroomprijs (salderen), uit je prijs-entiteit, uit een andere entiteit of een vast bedrag. Alleen gevraagd als je zonnepanelen of teruglevering hebt.
+- De voorgestelde prijs-entiteit komt uit je Energy-dashboard, of anders van een sensor per kWh met verwachte prijzen (kwartierprijzen eerst). Dat werkt nu voor elke leverancier, niet alleen voor Zonneplan.
+
+### Meters
+- **Meerdere tellers per meter**: aparte tellers voor normaal en dal, of meerdere omvormers, worden opgeteld. Voorheen werd alleen de eerste teller uit het Energy-dashboard gebruikt, waardoor bij een meter met twee tarieftellers de helft van de import ontbrak.
+- De stap **Je meters** laat zien wat uit het Energy-dashboard is overgenomen, zodat je het kunt controleren.
+
+### Instellingen
+- Het tandwiel heet nu **Instellingen** en stelt dezelfde vragen als de snelle start. Na het wijzigen van prijzen of meters wordt de historie vanzelf opnieuw berekend.
+- De installatie in Home Assistant vraagt niets meer: alles stel je in het paneel in. **Opnieuw configureren** is alleen nog voor het wissen van gegevens.
+- De zin "Alles wordt lokaal in Home Assistant berekend" staat niet meer op het startscherm.
+
+**Na bijwerken:** bestaande instellingen blijven werken zoals ze waren. Open **Instellingen** om de nieuwe vragen te zien; je antwoorden van nu staan al ingevuld.
+
 ## 1.2.4 – 22 oktober 2026
 
 ### Rekenen

@@ -188,6 +188,10 @@ class EnergydashPanel extends LitElement {
     ];
     const ctx = this._ctx;
     return html`${toolbar}
+      ${cfg.devices.length > 0 && !cfg.settings.contract
+        ? html`<div class="banner"><div class="alert warn"><ha-icon icon="mdi:alert"></ha-icon><div class="grow">${t("p.need_price")}</div>
+            ${cfg.is_admin ? html`<button class="btn secondary" @click=${() => (this._dialog = { kind: "settings" })}>${t("p.need_price_btn")}</button>` : nothing}</div></div>`
+        : nothing}
       ${busy && !this._onboarding ? html`<div class="banner"><div class="alert info"><ha-icon icon="mdi:progress-clock"></ha-icon>${t("busy")}</div></div>` : nothing}
       ${cfg.devices.length === 0 || this._onboarding
         ? this._renderEmpty()
@@ -227,7 +231,7 @@ class EnergydashPanel extends LitElement {
       return html`<ed-add-device .ctx=${ctx} .candidate=${d.candidate ?? null} .existing=${d.device ?? null} @closed=${close} @saved=${saved}></ed-add-device>`;
     }
     if (d.kind === "session") {
-      return html`<ed-dialog wide .heading=${t("s.session")} @closed=${close}>${renderSessionDetail(ctx, d.session, ctx.config.settings.solar_mode)}
+      return html`<ed-dialog wide .heading=${t("s.session")} @closed=${close}>${renderSessionDetail(ctx, d.session, ctx.config.settings.solar_mode ?? "export")}
         <button slot="footer" class="btn" @click=${close}>${t("c.close")}</button></ed-dialog>`;
     }
     if (d.kind === "device") {

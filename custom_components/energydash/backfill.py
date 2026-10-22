@@ -22,6 +22,15 @@ HOUR = timedelta(hours=1)
 Hourly = dict[datetime, float]  # hour start (UTC) -> value
 
 
+def sum_hourly(parts: list[Hourly]) -> Hourly:
+    """Hourly changes of several counters added up; an hour missing in one counter counts as 0."""
+    out: Hourly = {}
+    for part in parts:
+        for h, v in part.items():
+            out[h] = out.get(h, 0.0) + v
+    return out
+
+
 def self_use_hourly(solar: Hourly, export: Hourly | None) -> Hourly:
     """Solar used in the house per hour: production minus export (no export counter: production)."""
     if export is None:

@@ -21,6 +21,8 @@ export interface HassState {
 export type DeviceType = "sessions" | "continuous" | "charger";
 export type SessionSource = "power" | "entity";
 export type SolarMode = "export" | "free" | "grid";
+export type ExportMode = "auto" | "same" | "entity" | "fixed";
+export type Meter = string | string[] | null | undefined;
 
 export interface Device {
   id?: string;
@@ -52,17 +54,25 @@ export interface Numbers {
   grid_price_per_kwh: number | null;
 }
 
+// contract "dynamic" means: price from an entity. null until the user has chosen (quick start).
 export interface Settings {
-  contract: "dynamic" | "fixed";
-  import_entity: string;
-  export_entity?: string | null;
-  solar_entity?: string | null;
-  solar_mode: SolarMode;
+  contract: "dynamic" | "fixed" | null;
+  import_entity: Meter; // one counter or several (normal and low tariff), added up
+  export_entity?: Meter;
+  solar_entity?: Meter;
+  solar_mode: SolarMode | null;
   price_entity?: string | null;
+  price_markup?: number | null; // €/kWh on top of the entity's price; 0 = the entity is the full price
+  export_price_mode?: ExportMode | null;
   export_price_entity?: string | null;
   export_price_fixed?: number | null;
   price_normal?: number | null;
-  price_low?: number | null;
+  price_low?: number | null; // null with a fixed price: one price at all times
+}
+
+export function meterIds(m: Meter): string[] {
+  if (Array.isArray(m)) return m.filter((x) => !!x);
+  return m ? [m] : [];
 }
 
 export interface Session {
@@ -90,6 +100,7 @@ export interface ConfigResult {
     price_attribute: string | null;
     price_scale: number;
     price_current: number | null;
+    price_export_forecast?: boolean;
     import_now: number | null;
     house_since: string | null;
   };
@@ -189,7 +200,8 @@ export interface StepLog {
 
 export const api = {
   config: (h: Hass) => h.callWS<ConfigResult>({ type: "energydash/config" }),
-  saveSettings: (h: Hass, settings: Settings) => h.callWS<{ settings: Settings }>({ type: "energydash/settings/save", settings }),
+  saveSettings: (h: Hass, settings: Settings, recalculate = false) =>
+    h.callWS<{ settings: Settings }>({ type: "energydash/settings/save", settings, recalculate }),
   discover: (h: Hass) => h.callWS<{ suggested: Candidate[]; others: Candidate[] }>({ type: "energydash/discover" }),
   suggest: (h: Hass) => h.callWS<{ items: Suggestion[]; days: number }>({ type: "energydash/suggest" }),
   analyze: (h: Hass, req: { energy_entity: string; energy_is_power?: boolean; power_entity?: string | null; session_entity?: string | null }) =>

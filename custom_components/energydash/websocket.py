@@ -11,30 +11,10 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
 
-from .const import (
-    CONF_CONTRACT,
-    CONF_EXPORT_ENTITY,
-    CONF_EXPORT_PRICE_ENTITY,
-    CONF_EXPORT_PRICE_FIXED,
-    CONF_IMPORT_ENTITY,
-    CONF_PRICE_ENTITY,
-    CONF_PRICE_LOW,
-    CONF_PRICE_NORMAL,
-    CONF_SOLAR_ENTITY,
-    CONF_SOLAR_MODE,
-    CONTRACT_DYNAMIC,
-    CONTRACT_FIXED,
-    DOMAIN,
-    SOLAR_MODES,
-    VERSION,
-)
+from .const import DOMAIN, VERSION
 from .coordinator import EnergydashCoordinator
 from .discovery import async_analyze, async_discover, async_preview, async_suggest
-
-SETTINGS_KEYS = (
-    CONF_CONTRACT, CONF_PRICE_ENTITY, CONF_PRICE_NORMAL, CONF_PRICE_LOW, CONF_IMPORT_ENTITY, CONF_EXPORT_ENTITY,
-    CONF_SOLAR_ENTITY, CONF_SOLAR_MODE, CONF_EXPORT_PRICE_ENTITY, CONF_EXPORT_PRICE_FIXED,
-)
+from .settings import clean_settings
 
 
 def _coord(hass: HomeAssistant) -> EnergydashCoordinator | None:
@@ -86,21 +66,24 @@ def ws_config(hass, connection, msg):
 @websocket_api.websocket_command({
     vol.Required("type"): "energydash/settings/save",
     vol.Required("settings"): dict,
+    vol.Optional("recalculate", default=False): bool,
 })
 @websocket_api.require_admin
 @websocket_api.async_response
 async def ws_settings_save(hass, connection, msg):
+    """Prices and meters from the panel. `recalculate`: the house (and devices) again with the new settings."""
     coord = _guard(hass, connection, msg)
     if coord is None:
         return
-    new = {k: v for k, v in msg["settings"].items() if k in SETTINGS_KEYS}
-    if new.get(CONF_CONTRACT) not in (CONTRACT_DYNAMIC, CONTRACT_FIXED) or new.get(CONF_SOLAR_MODE) not in SOLAR_MODES:
-        connection.send_error(msg["id"], "invalid", "Invalid contract or solar mode")
-        return
-    if not new.get(CONF_IMPORT_ENTITY):
-        connection.send_error(msg["id"], "invalid", "Import entity is required")
+    try:
+        new = clean_settings(msg["settings"])
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid", str(err))
         return
     hass.config_entries.async_update_entry(coord.entry, options={**coord.entry.options, **new})
+    if msg["recalculate"]:
+        await coord.async_settings_changed()
+        coord.start_task(coord.async_recalculate(None, include_house=True), "settings")
     connection.send_result(msg["id"], {"settings": coord.settings})
 
 

@@ -16,6 +16,9 @@ Per apparaat is er één energiebron:
 - Dan geldt: `dE = nieuwe waarde` (niet het negatieve verschil).
 - `unavailable`/`unknown` overslaan; de volgende geldige waarde levert het verschil over de hele onderbreking.
 
+### Meerdere tellers voor één meter
+Import, teruglevering en opwek mogen uit meerdere tellers bestaan: een slimme meter met aparte tellers voor normaal en dal, of twee omvormers. Energydash telt ze op. In de historie gebeurt dat per teller met dezelfde resetregel, zodat een reset van één teller de som niet laat dalen; de som begint pas als elke teller een waarde heeft.
+
 ### Onmogelijke stappen
 Loopt de teller sneller op dan een huisaansluiting kan leveren (meer dan 25 kW gemiddeld sinds de vorige tellerstand), dan telt die stap niet mee en staat er `implausible` in de meetstappen. Dat gebeurt bij een teller in de auto (`charge_energy_added`) na laden onderweg, bijvoorbeeld 38,8 kWh in 30 minuten bij een snellader, en bij een teller die even terugvalt naar 0 en daarna weer op zijn oude stand staat.
 
@@ -59,7 +62,12 @@ Een cloud-teller loopt iets achter op de realtime P1 (latency van de cloud). Bij
 
 ## 3. Prijs: tijdgewogen kwartierprijs
 
-- Prijs-entiteit: elke sensor in €/kWh, inclusief belastingen, van welke leverancier ook.
+De gebruiker kiest zelf hoe de prijs wordt ingevoerd; Energydash neemt niets aan (zie docs/04, snelle start):
+
+- **Prijs uit een entiteit**: elke sensor per kWh, van welke leverancier ook. Gevraagd wordt of dit de prijs is die je echt betaalt. Zo niet (bijvoorbeeld een kale beursprijs van Nord Pool of ENTSO-e), dan komt er een **opslag per kWh** bij (energiebelasting, inkoopvergoeding en btw samen): `prijs = prijs_entiteit + opslag`.
+- **Vaste prijs**: één prijs, of normaal en dal (dal doordeweeks 23:00–07:00 en het hele weekend).
+
+Bij een prijs-entiteit:
 - Heeft hij een forecast-attribuut met prijzen per kwartier of uur (zoals Zonneplan), dan:
 
 ```
@@ -81,9 +89,20 @@ alles_net  = dE × prijs            # ter vergelijking ("zonder zonnepanelen")
 
 | Keuze in UI | `zonprijs` | Wanneer zinvol |
 |---|---|---|
-| **Wat je anders had gekregen** (standaard) | terugleververgoeding van dat kwartier (kale marktprijs uit dezelfde entiteit, of een aparte entiteit) | Eerlijkst zonder salderen (salderen stopt per 2027) |
+| **Wat je anders had gekregen** | de terugleverprijs van dat kwartier (zie hieronder) | Eerlijkst zonder salderen (salderen stopt per 2027) |
 | **Niets** | 0 | Wie zon als gratis wil zien |
 | **Hetzelfde als stroom uit het net** | gelijk aan `prijs` | Laat zien wat elk apparaat kost zonder zonnepanelen |
+
+Ook de terugleverprijs is een keuze van de gebruiker (alleen gevraagd als er een terugleverteller of opwekteller is):
+
+| Keuze in UI | Terugleverprijs |
+|---|---|
+| **Hetzelfde als de stroomprijs** | `prijs` van dat interval, opslag inbegrepen (salderen) |
+| **Uit je prijs-entiteit** (alleen bij een prijs-entiteit) | de prijs zonder belastingen uit de forecast; staat die er niet in of is het historie, dan afgeleid uit de prijs van de entiteit (zonder opslag) met de verhouding uit de forecast |
+| **Uit een andere entiteit** (alleen bij een prijs-entiteit) | die entiteit |
+| **Een vast bedrag** | dat bedrag (0 mag) |
+
+Instellingen van vóór 1.2.5 hebben deze keuze nog niet en houden hun oude gedrag: met een terugleverprijs-entiteit "Uit een andere entiteit", anders "Uit je prijs-entiteit" (bij een vast tarief het vaste bedrag, of 0).
 
 ## 5. Sessies
 
@@ -120,7 +139,8 @@ De recorder bewaart de standen meestal 10 dagen. Voor de periode daarvoor (tot e
 - Energie per uur = de `change` van de statistiek van de teller (resets heeft HA al verwerkt). Een vermogenssensor: het uurgemiddelde.
 - Zon of net per uur met dezelfde regel als per meetstap, inclusief de grens met de opwekteller. Omdat `min(Σa, Σb) ≥ Σ min(a, b)` geeft een uursplitsing nooit méér zon dan een fijnere: geen spookzon, hooguit iets te weinig.
 - Prijs per uur = het uurgemiddelde van de prijs-entiteit. Heeft die geen statistieken, dan de kostensensor van het Energy-dashboard (`<P1-import>_cost`): kosten van dat uur gedeeld door de import van dat uur.
-- Terugleverprijs: van de entiteit voor de terugleverprijs, anders de vaste terugleverprijs, anders de verhouding teruglever-/importprijs uit de recorder-periode.
+- Opslag per kWh: telt ook hier mee.
+- Terugleverprijs: volgens de keuze in §4; bij "Uit je prijs-entiteit" de verhouding teruglever-/importprijs uit de forecast.
 - Uren met meer dan 25 kWh tellen niet mee (laden onderweg).
 - Sessies zijn uit uurtotalen niet terug te halen; die periode toont alleen kosten per uur, dag en maand.
 

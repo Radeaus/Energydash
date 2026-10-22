@@ -46,6 +46,35 @@ def numeric_series(states: list[Any], kind: str = "energy", unit: str | None = N
     return out
 
 
+def sum_counters(series: list[list[tuple[datetime, float]]]) -> list[tuple[datetime, float]]:
+    """Several kWh counters as one (normal and low tariff, two inverters).
+
+    One counter is returned as is. For more, the sum is built from each counter's own steps, so a
+    reset of one counter (a drop) adds its new value instead of making the total drop (docs/02 §2).
+    The total starts once every counter has a value.
+    """
+    series = [s for s in series if s]
+    if len(series) <= 1:
+        return list(series[0]) if series else []
+    events = sorted((t, i, v) for i, s in enumerate(series) for t, v in s)
+    last: dict[int, float] = {}
+    total = 0.0
+    out: list[tuple[datetime, float]] = []
+    for t, i, v in events:
+        prev = last.get(i)
+        if prev is not None:
+            total += v - prev if v >= prev else v
+        else:
+            total += v
+        last[i] = v
+        if len(last) == len(series):
+            if out and t <= out[-1][0]:
+                out[-1] = (out[-1][0], total)
+            else:
+                out.append((t, total))
+    return out
+
+
 def count_invalid(states: list[Any]) -> int:
     count = 0
     prev_invalid = False

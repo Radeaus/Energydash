@@ -3,115 +3,25 @@
     "step": {
       "user": {
         "title": "Energydash",
-        "description": "Alles wordt lokaal in Home Assistant berekend; er gaat niets naar de cloud. Voorstellen komen uit je Energy-dashboard.",
-        "data": {
-          "contract": "Soort contract",
-          "import_entity": "Import uit het net",
-          "solar_mode": "Wat kost stroom van je eigen zonnepanelen?",
-          "export_entity": "Teruglevering aan het net",
-          "solar_entity": "Opwek zonnepanelen"
-        },
-        "data_description": {
-          "import_entity": "kWh-teller van je slimme meter (P1) voor import.",
-          "solar_mode": "Geldt voor alle apparaten. Zon gaat eerst naar de rest van het huis; alleen wat daarna over is telt als zon voor het apparaat.",
-          "export_entity": "Optioneel. Samen met de opwek nodig om de rest van het huis te berekenen.",
-          "solar_entity": "Optioneel. kWh-teller van je omvormer."
-        }
-      },
-      "prices": {
-        "title": "Stroomprijs",
-        "data": {
-          "price_entity": "Stroomprijs",
-          "export_price_entity": "Terugleverprijs",
-          "export_price_fixed": "Vaste terugleverprijs",
-          "price_normal": "Normaaltarief",
-          "price_low": "Daltarief"
-        },
-        "data_description": {
-          "price_entity": "Sensor in €/kWh inclusief belastingen. Een forecast-attribuut met kwartier- of uurprijzen wordt automatisch gebruikt.",
-          "export_price_entity": "Optioneel. Zonder deze entiteit gebruiken we de prijs zonder belastingen uit de forecast, als die er is.",
-          "export_price_fixed": "Optioneel. Gebruikt als er geen terugleverprijs-entiteit of forecast is.",
-          "price_low": "Doordeweeks 23:00-07:00 en in het weekend."
-        }
+        "description": "Energydash wordt toegevoegd aan de zijbalk. Daar kies je je stroomprijs en meters, en voeg je je apparaten toe."
       },
       "reconfigure": {
         "title": "Opnieuw instellen",
-        "description": "Doorloop de installatie opnieuw. Je kunt ook de berekende gegevens wissen of helemaal opnieuw beginnen.",
+        "description": "Prijzen en meters staan in het Energydash-paneel, onder Instellingen. Hier kun je berekende gegevens wissen of helemaal opnieuw beginnen.",
         "data": {
-          "contract": "Soort contract",
-          "import_entity": "Import uit het net",
-          "solar_mode": "Wat kost stroom van je eigen zonnepanelen?",
-          "export_entity": "Teruglevering aan het net",
-          "solar_entity": "Opwek zonnepanelen",
           "reset": "Gegevens wissen"
         }
-      },
-      "reconfigure_prices": {
-        "title": "Stroomprijs",
-        "data": {
-          "price_entity": "Stroomprijs",
-          "export_price_entity": "Terugleverprijs",
-          "export_price_fixed": "Vaste terugleverprijs",
-          "price_normal": "Normaaltarief",
-          "price_low": "Daltarief"
-        }
       }
-    },
-    "error": {
-      "price_not_numeric": "Deze entiteit heeft geen getal als prijs. Kies een sensor in €/kWh."
     },
     "abort": {
       "single_instance_allowed": "Energydash is al ingesteld.",
       "reconfigure_successful": "Opgeslagen."
     },
     "create_entry": {
-      "default": "Gelukt! Energydash is ingesteld. Je vindt het nu in de zijbalk."
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Prijzen en zon",
-        "data": {
-          "contract": "Soort contract",
-          "import_entity": "Import uit het net",
-          "solar_mode": "Wat kost stroom van je eigen zonnepanelen?",
-          "export_entity": "Teruglevering aan het net",
-          "solar_entity": "Opwek zonnepanelen"
-        },
-        "data_description": {
-          "solar_mode": "Geldt voor alle apparaten, ook voor eerdere resultaten."
-        }
-      },
-      "prices": {
-        "title": "Stroomprijs",
-        "data": {
-          "price_entity": "Stroomprijs",
-          "export_price_entity": "Terugleverprijs",
-          "export_price_fixed": "Vaste terugleverprijs",
-          "price_normal": "Normaaltarief",
-          "price_low": "Daltarief"
-        }
-      }
-    },
-    "error": {
-      "price_not_numeric": "Deze entiteit heeft geen getal als prijs. Kies een sensor in €/kWh."
+      "default": "Energydash is ingesteld. Open het in de zijbalk om je stroomprijs te kiezen."
     }
   },
   "selector": {
-    "contract": {
-      "options": {
-        "dynamic": "Dynamisch contract - prijs per kwartier of uur uit een entiteit",
-        "fixed": "Vast tarief - normaal- en daltarief"
-      }
-    },
-    "solar_mode": {
-      "options": {
-        "export": "Wat je anders had gekregen (terugleverprijs)",
-        "free": "Niets",
-        "grid": "Hetzelfde als stroom uit het net"
-      }
-    },
     "reset": {
       "options": {
         "none": "Alles bewaren",

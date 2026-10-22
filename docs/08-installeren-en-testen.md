@@ -21,10 +21,11 @@ Deze handleiding hoort bij versie 1.0.0. Eerst installeren, dan het testplan, da
 
 ### Instellen
 1. *Instellingen › Apparaten en diensten › Integratie toevoegen › Energydash*.
-2. Stap 1: **Soort contract** (Dynamisch), **Import uit het net** (voorgesteld: `sensor.p1_meter_energy_import`), **Wat kost stroom van je eigen zonnepanelen?**, en optioneel **Teruglevering** (`sensor.p1_meter_energie_export`) en **Opwek zonnepanelen** (`sensor.inverter_omvormer_zolder_energy`). Vul die twee in: zonder kan "Rest van het huis" op zonnige dagen niet kloppen.
-3. Stap 2: **Stroomprijs** (voorgesteld: `sensor.zonneplan_current_quarter_hourly_electricity_tariff`). Laat **Terugleverprijs** leeg: dan gebruikt Energydash `price_tax_excluded` uit de forecast.
-4. **Verzenden** › "Gelukt!". **Energydash** staat nu in de zijbalk. Op de achtergrond rekent hij het hele huis terug over de recorder-historie (meestal 10 dagen); bovenin het paneel zie je dan een melding.
-5. In het paneel: **Ontdekt** toont je zes apparaten. Voeg ze één voor één toe. Bij de wasmachine en de droger zie je in de laatste stap de vermogensgrafiek van 7 dagen met de gevonden sessies; schuif **Klaar na** tot het aantal wasbeurten klopt.
+2. **Verzenden** › **Energydash** staat nu in de zijbalk. Open het en kies **Wizard starten**.
+3. **Je stroomprijs**: **Prijs uit een entiteit** › `sensor.zonneplan_current_quarter_hourly_electricity_tariff` › **Ja, alles zit erin** (Zonneplan geeft de all-in prijs).
+4. **Je meters**: controleer **Import uit het net** (`sensor.p1_meter_energy_import`), **Teruglevering** (`sensor.p1_meter_energie_export`) en **Opwek zonnepanelen** (`sensor.inverter_omvormer_zolder_energy`). Vul die laatste twee in: zonder kan "Rest van het huis" op zonnige dagen niet kloppen.
+5. **Zonnestroom en teruglevering**: **Wat je anders had gekregen** en **Uit je prijs-entiteit** (de terugleverprijs staat in de forecast van Zonneplan).
+6. **Opslaan en apparaten zoeken**: het huis wordt teruggerekend over de recorder-historie (meestal 10 dagen) en de snelle start toont je apparaten. Vink aan wat je wilt volgen en voeg ze in één keer toe.
 
 > Na het bijwerken via HACS altijd HA opnieuw opstarten. Ververs daarna de browser met Ctrl+F5 als het paneel er nog oud uitziet (de URL van het paneel bevat een versie-hash, dus meestal is dat niet nodig).
 

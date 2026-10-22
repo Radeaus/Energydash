@@ -6,10 +6,11 @@ Gebaseerd op de Home Assistant-designrichtlijnen (contributors.home-assistant.io
 
 | HA-principe | Toepassing |
 |---|---|
-| Privacy / lokaal | Wizard zegt: "Alles wordt lokaal in Home Assistant berekend; er gaat niets naar de cloud." |
+| Privacy / lokaal | Alles wordt lokaal in Home Assistant berekend; er gaat niets naar de cloud. (Staat niet meer als zin in de wizard.) |
 | Keuze | Werkt met elke leverancier en elk merk; Zonneplan is alleen een voorbeeld. Gebruiker kiest elke bron zelf. |
 | Duurzaamheid | Geen eigen afwijkende UI-patronen; standaard HA-componenten. |
 | Welkom | Uitleg in gewone taal, voorstellen met reden ("Voorgesteld omdat …"). |
+| Niets aannemen | Hoe de prijs wordt ingevoerd, of er iets bij komt, de terugleverprijs en de zonkeuze vraagt de wizard; geen van die keuzes staat vooraf aangevinkt. Alleen meters en een prijs-entiteit worden voorgesteld (uit het Energy-dashboard), en die zie je om te controleren. |
 | Eerlijk (candid) | Gegevenscheck, "Alleen vermogen"-waarschuwing, "Hoe is dit berekend?" bij elke sessie. |
 | Ondersteunend | Foutmeldingen met oorzaak én volgende stap ("Zet ‘Klaar na’ hoger"). |
 | Gul | Alles achteraf aanpasbaar; zwakke bron mag wél, maar met uitleg. |
@@ -17,16 +18,19 @@ Gebaseerd op de Home Assistant-designrichtlijnen (contributors.home-assistant.io
 ## Flows
 
 ### 1. Installeren (config flow, Instellingen › Apparaten en diensten)
-Eén stap met:
-- **Soort contract** * (select-box): Dynamisch contract / Vast tarief.
-- **Stroomprijs** * (entity picker, €/kWh) of bij vast: Normaaltarief * en Daltarief.
-- **Import uit het net** * (entity picker, kWh-teller; voorgesteld uit het Energy-dashboard).
-- **Wat kost stroom van je eigen zonnepanelen?** * (select-box): Wat je anders had gekregen / Niets / Hetzelfde als stroom uit het net. Helptekst: "Geldt voor alle apparaten. Zon gaat eerst naar de rest van het huis; alleen wat daarna over is telt als zon voor het apparaat."
-- Knop **Verzenden** → "Gelukt! Energydash is ingesteld. Je vindt het nu in de zijbalk." → **Voltooien**.
+Eén bevestiging zonder velden: "Energydash wordt toegevoegd aan de zijbalk. Daar kies je je stroomprijs en meters, en voeg je je apparaten toe." De meters uit het Energy-dashboard (alle import-, teruglever- en opwektellers) en een voorgestelde prijs-entiteit worden als startwaarde bewaard; het soort prijs blijft leeg tot de gebruiker kiest.
+
+**Opnieuw configureren** heeft alleen nog **Gegevens wissen** (Alles bewaren / Berekende gegevens wissen / Opnieuw beginnen). Er is geen options flow meer: prijzen en meters staan in het paneel.
 
 ### 2. Paneel, eerste keer: snelle start (`ed-onboarding`)
 Doel: een nieuwe gebruiker heeft in twee klikken zijn apparaten, zonder te weten wat tellers, soorten of bronnen zijn. Alles wat niet nodig is, staat er niet.
-1. **Start**: icoon 64 px, kop **"Zien wat je apparaten kosten"**, één zin uitleg, knop **Wizard starten**, daaronder tekstknop **Geavanceerd instellen** (opent de wizard van flow 3). Onder de kaart de privacyzin. Geen beheerder: alleen uitleg.
+1. **Start**: icoon 64 px, kop **"Zien wat je apparaten kosten"**, één zin uitleg, knop **Wizard starten**, daaronder tekstknop **Geavanceerd instellen** (opent de wizard van flow 3; is de prijs nog niet gekozen, dan eerst stap 1a–1c). Geen beheerder: alleen uitleg.
+1a. **Je stroomprijs** (stap 1 van 2 of 3): "Hoe wil je je stroomprijs invoeren?" * met **Prijs uit een entiteit** / **Vaste prijs**, niets vooraf gekozen.
+   - Entiteit: **Prijs-entiteit** * (sensors per kWh bovenaan, met de huidige prijs eronder), dan "Is dit de prijs die je echt betaalt?" * met **Ja, alles zit erin** / **Nee, er komt nog iets bij** → **Opslag per kWh (€)** *.
+   - Vast: "Heb je één prijs of een dag- en nachttarief?" * met **Eén prijs** → **Prijs per kWh (€)** *, of **Normaal en dal** → **Normaaltarief** * en **Daltarief** *.
+1b. **Je meters**: **Import uit het net** *, **Teruglevering aan het net** en **Opwek zonnepanelen**, voorgevuld uit het Energy-dashboard. Per meter **Teller toevoegen** voor aparte tellers voor normaal en dal of meerdere omvormers.
+1c. **Zonnestroom en teruglevering** (alleen met een teruglever- of opwekteller): **Wat kost stroom van je eigen zonnepanelen?** * en **Wat krijg je voor stroom die je teruglevert?** * (Hetzelfde als de stroomprijs / Uit je prijs-entiteit / Uit een andere entiteit / Een vast bedrag; de entiteit-opties alleen bij een prijs-entiteit).
+   - Knoppen **Terug** en **Volgende**; de laatste stap **Opslaan en apparaten zoeken**. Volgende is pas actief als alle vragen van de stap beantwoord zijn. Na opslaan wordt het huis opnieuw berekend.
 2. **Even zoeken…**: drie regels met vinkjes (Energy-dashboard lezen, stroommeters zoeken, historie bekijken), zodat het wachten iets vertelt.
 3. **Gevonden**: vinklijst. Aangevinkt staat alleen wat zeker goed is (regels in docs/03 "Snelle start"). Per regel: naam, soort en in één regel wat we vonden ("5 sessies in 7 dagen, gemiddeld 1,1 kWh", "Gemiddeld 48 W, 1,2 kWh per dag"). Uitklappen toont een mini-grafiek van het vermogen, de herkomst en **Aanpassen** (opent flow 3 met het voorstel). Daaronder **Ook gevonden**, niet aangevinkt, met de reden in één zin ("Meet in de auto: … Je laadpaal meet beter."). Knop **{n} apparaten toevoegen**.
 4. **Terugrekenen**: "{n} apparaten toegevoegd", voortgangsbalk en per apparaat wachten / bezig / klaar, plus dat sluipverbruik al werkt zonder apparaat. Als alles klaar is, gaat het paneel vanzelf naar het dashboard. Duurt het langer dan 20 seconden, dan verschijnt de tekstknop **Alvast naar het dashboard**. De balk "Bezig met terugrekenen" bovenaan is in de snelle start verborgen.
@@ -48,7 +52,8 @@ Doel: een nieuwe gebruiker heeft in twee klikken zijn apparaten, zonder te weten
 - **Sessies**: lijst; tik opent een dialoog met kosten, staven per kwartier (zon/net), opbouw (net, zon, totaal), inzicht, en uitklapblok **"Hoe is dit berekend?"** (energiebron, zon/net-regel, prijsregel, controle).
 - **Sluipverbruik**: basislast (W, kWh/dag), €/maand, €/jaar, uitsplitsing (verklaard/onverklaard) met advies, basislast per week.
 - **Apparaten**: lijst met soort en regel; zwevende knop **Apparaat toevoegen**. Apparaatdialoog met bronnen en gegevenscheck; **Verwijderen** → bevestiging **"Apparaat verwijderen?"** met uitleg dat geschiedenis bewaard blijft.
-- Tandwiel in de kopbalk: **Prijzen en zon** (options flow, zelfde velden als installatie).
+- Tandwiel in de kopbalk: **Instellingen**: dezelfde vragen als stap 1a–1c onder elkaar (Stroomprijs, Meters, Zonnestroom en teruglevering), daarna Testen en beheer. Opslaan met gewijzigde instellingen rekent de historie opnieuw uit ("Opgeslagen. We rekenen je historie opnieuw uit.").
+- Zijn er apparaten maar is de prijs nog niet gekozen, dan staat bovenaan een waarschuwing met **Stroomprijs instellen**.
 
 ## Teksten (UI text)
 - Zinsvorm, werkwoorden op knoppen: "Apparaat toevoegen", "Opslaan", "Volgende", "Verzenden", "Voltooien", "Verwijderen", "Annuleren", "Sluiten".

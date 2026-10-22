@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from .const import TYPE_CHARGER, TYPE_CONTINUOUS, TYPE_SESSIONS
+from .price import parse_forecast
 
 PERIODIC_TOKENS = (
     "today", "vandaag", "yesterday", "gisteren", "daily", "_dag_", "_dag", "dag_",
@@ -114,3 +116,69 @@ def session_entity_rank(entity_id: str, device_class: str | None, same_device: b
     low = entity_id.lower()
     connectivity = device_class == "connectivity" or any(t in low for t in CONNECTIVITY_TOKENS)
     return (connectivity, not same_device, "status" not in low, entity_id)
+
+
+def grid_suggestions(prefs: dict[str, Any]) -> dict[str, Any]:
+    """Meters and prices from the Energy dashboard: every grid and solar counter, not just the first.
+
+    A smart meter with separate normal and low tariff counters has two import counters; a house
+    with two inverters has two solar sources. Prices only come from the import flow (the export
+    flow has its own compensation price).
+    """
+    found: dict[str, Any] = {"import": [], "export": [], "solar": [], "price_entity": None, "price_fixed": None,
+                             "export_price_entity": None, "export_price_fixed": None}
+
+    def add(key: str, value: Any) -> None:
+        if isinstance(value, str) and "." in value and value not in found[key]:
+            found[key].append(value)
+
+    def first(key: str, value: Any) -> None:
+        if found[key] is None and value is not None and value != "":
+            found[key] = value
+
+    def walk(obj: Any, kind: str | None) -> None:
+        if isinstance(obj, dict):
+            kind = obj.get("type", kind)
+            if kind == "grid" and "stat_energy_from" in obj:
+                add("import", obj["stat_energy_from"])
+                first("price_entity", obj.get("entity_energy_price"))
+                first("price_fixed", obj.get("number_energy_price"))
+            elif kind == "grid" and "stat_energy_to" in obj:
+                add("export", obj["stat_energy_to"])
+                first("export_price_entity", obj.get("entity_energy_price"))
+                first("export_price_fixed", obj.get("number_energy_price"))
+            elif kind == "solar" and "stat_energy_from" in obj:
+                add("solar", obj["stat_energy_from"])
+            for value in obj.values():
+                if isinstance(value, (dict, list)):
+                    walk(value, kind)
+        elif isinstance(obj, list):
+            for item in obj:
+                walk(item, kind)
+
+    walk(prefs.get("energy_sources") or [], None)
+    return found
+
+
+def pick_price_entity(sensors: list[tuple[str, str | None, dict[str, Any], str]]) -> str | None:
+    """A price entity to suggest when the Energy dashboard has none: a sensor per kWh with a forecast.
+
+    `sensors` are (entity_id, unit, attributes, state). Quarter-hour prices beat hourly ones.
+    Only a suggestion: the user chooses the price entity in the panel.
+    """
+    best: tuple[tuple, str] | None = None
+    for entity_id, unit, attributes, state in sensors:
+        if not unit or "/kwh" not in unit.lower().replace(" ", ""):
+            continue
+        try:
+            value = float(state)
+        except (TypeError, ValueError):
+            continue
+        series = parse_forecast(attributes, value, None).price
+        if not series:
+            continue
+        spacing = min((b - a).total_seconds() for a, b in zip(series.starts, series.ends))
+        key = (spacing > 900, entity_id)
+        if best is None or key < best[0]:
+            best = (key, entity_id)
+    return best[1] if best else None

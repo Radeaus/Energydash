@@ -1,9 +1,16 @@
 // Small building blocks: dialog (bottom sheet on narrow screens), entity picker, confirm dialog.
 
-import { LitElement, css, html, nothing, type ReactiveController, type ReactiveControllerHost } from "lit";
+import { LitElement, css, html, nothing, type ReactiveController, type ReactiveControllerHost, type TemplateResult } from "lit";
 import type { Hass, HassState } from "./api";
 import { shared } from "./styles";
 import { t } from "./i18n";
+
+/** Option card for a choice (role radio); the caller wraps a group in role="radiogroup". */
+export function radio(checked: boolean, title: string, text: string, onClick: () => void): TemplateResult {
+  return html`<button class="radio" role="radio" aria-checked=${checked} @click=${onClick}>
+    <span class="dot"></span><div><b>${title}</b><span>${text}</span></div>
+  </button>`;
+}
 
 export function fire(el: HTMLElement, type: string, detail?: unknown) {
   // Not composed: events stay inside the panel and never reach Home Assistant's own listeners.
@@ -338,6 +345,13 @@ export function energyOnlyFilter(s: HassState): EntityOption | null {
 
 export function anySensorFilter(s: HassState): EntityOption | null {
   if (!s.entity_id.startsWith("sensor.")) return null;
+  return { entity_id: s.entity_id, name: String(s.attributes.friendly_name ?? s.entity_id), chip: s.attributes.unit_of_measurement, level: "neutral" };
+}
+
+/** Sensors with a price per kWh (€/kWh, EUR/kWh, ct/kWh): offered first when picking a price entity. */
+export function priceFilter(s: HassState): EntityOption | null {
+  const unit = String(s.attributes.unit_of_measurement ?? "").toLowerCase().replace(/\s/g, "");
+  if (!s.entity_id.startsWith("sensor.") || !unit.includes("/kwh")) return null;
   return { entity_id: s.entity_id, name: String(s.attributes.friendly_name ?? s.entity_id), chip: s.attributes.unit_of_measurement, level: "neutral" };
 }
 

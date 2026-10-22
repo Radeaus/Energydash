@@ -277,11 +277,15 @@ class PriceProvider:
         observed: PriceSeries | None = None,
         export_observed: PriceSeries | None = None,
         export_from_import: tuple[float, float] | None = None,
+        markup: float = 0.0,
+        export_same: bool = False,
     ) -> None:
         """`series` is a forecast (preferred); `observed` is built from the entity's past states.
 
         `export_from_import` (a, b) derives the export price from the import price when no export
-        price is known for an interval (see export_relation).
+        price is known for an interval (see export_relation). `markup` is added to the entity's
+        price (taxes and fees the entity leaves out); the derived export price uses the entity's
+        own price. `export_same`: export is paid at the import price, markup included.
         """
         self.series = series or PriceSeries()
         self.export_series = export_series or PriceSeries()
@@ -291,20 +295,29 @@ class PriceProvider:
         self.export_fallback = export_fallback
         self.export_from_import = export_from_import
         self.fixed = fixed
+        self.markup = markup
+        self.export_same = export_same
 
-    def price(self, t0: datetime, t1: datetime) -> float | None:
+    def _entity_price(self, t0: datetime, t1: datetime) -> float | None:
         if self.fixed is not None:
             normal, low, tz = self.fixed
             return fixed_tariff_series(t0, t1, normal, low, tz).weighted(t0, t1)
         value = _pick(self.series, self.observed, t0, t1)
         return value if value is not None else self.fallback
 
+    def price(self, t0: datetime, t1: datetime) -> float | None:
+        value = self._entity_price(t0, t1)
+        return value + self.markup if value is not None else None
+
     def export_price(self, t0: datetime, t1: datetime) -> float:
+        if self.export_same:
+            same = self.price(t0, t1)
+            return same if same is not None else 0.0
         value = _pick(self.export_series, self.export_observed, t0, t1)
         if value is None:
             value = self.export_fallback
         if value is None and self.export_from_import is not None:
-            imp = self.price(t0, t1)
+            imp = self._entity_price(t0, t1)
             if imp is not None:
                 a, b = self.export_from_import
                 value = a * imp + b

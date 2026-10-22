@@ -1,7 +1,7 @@
 // The four tabs: Dashboard, Sessies, Sluipverbruik, Apparaten (docs/04 §4).
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
-import { api, sessionCost, type Baseload, type ConfigResult, type Device, type Hass, type Period, type Session, type SolarMode, type Summary } from "./api";
+import { api, meterIds, sessionCost, type Baseload, type ConfigResult, type Device, type Hass, type Period, type Session, type SolarMode, type Summary } from "./api";
 import { colors, conic, dateTime, day, deviceColor, eur, minutesBetween, num, pct, time } from "./format";
 import { t } from "./i18n";
 import { shared } from "./styles";
@@ -146,7 +146,7 @@ export class EdDashboard extends LitElement {
 
   render() {
     const d = this._data;
-    const mode = this.ctx.config.settings.solar_mode;
+    const mode = this.ctx.config.settings.solar_mode ?? "export";
     const head = html`<div class="toolbar">
       <div class="seg-btns" role="group">
         ${(["week", "month", "year"] as const).map((p) => html`<button aria-pressed=${this._period === p} @click=${() => { this._period = p; this._offset = 0; this._hoverDay = null; }}>${t(`d.${p}`)}</button>`)}
@@ -172,7 +172,7 @@ export class EdDashboard extends LitElement {
     // Average price of the power actually bought: grid cost / grid kWh, weighted by when it was bought.
     const gridPrice = gridKwh > 0.01 ? house!.net_cost / gridKwh : null;
     const days = Math.max(daysWithData, 1);
-    const hasSolar = zonKwh > 0.001 || d.export.available || !!this.ctx.config.settings.solar_entity;
+    const hasSolar = zonKwh > 0.001 || d.export.available || meterIds(this.ctx.config.settings.solar_entity).length > 0;
 
     const kpis = [
       {
@@ -221,7 +221,7 @@ export class EdDashboard extends LitElement {
 
   private _solar(d: Summary, zonKwh: number, kwh: number): TemplateResult {
     const c = colors(this.ctx.dark);
-    const mode = this.ctx.config.settings.solar_mode;
+    const mode = this.ctx.config.settings.solar_mode ?? "export";
     const house = d.totals["_house"];
     const exp = d.export;
     const produced = exp.available ? zonKwh + exp.kwh : null;

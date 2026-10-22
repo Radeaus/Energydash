@@ -27,7 +27,8 @@ Energydash/
 │   ├── storage.py           # HA: Store (config / recent / archief)
 │   ├── sensor.py            # per apparaat: kosten vandaag/maand, laatste sessie; huis, rest, sluipverbruik
 │   ├── websocket.py         # API voor het paneel
-│   ├── config_flow.py       # installatie, options flow "Prijzen en zon", reconfigure met wissen
+│   ├── config_flow.py       # installatie (alleen bevestigen), reconfigure met wissen
+│   ├── settings.py          # instellingen uit het paneel controleren; terugleverkeuze, opslag, meerdere tellers
 │   ├── diagnostics.py
 │   ├── services.yaml, icons.json, strings.json, translations/{nl,en}.json
 │   └── frontend/energydash-panel.js   # gebundelde output van /frontend
@@ -65,7 +66,7 @@ Het paneel krijgt `hass`, `narrow`, `route` en `panel`. Het moet zelf een kopbal
 | `energydash/summary` | Dashboarddata per periode: kalenderweek (tot en met vandaag), maand of jaar; per apparaat, rest, zon/net, teruglevering, per uur |
 | `energydash/baseload` | Sluipverbruik en uitsplitsing |
 | `energydash/subscribe` | Live updates naar het paneel |
-| `energydash/settings/save` | Prijzen en zon opslaan (beheerder) |
+| `energydash/settings/save` | Prijs, meters, zon en teruglevering opslaan (beheerder); met `recalculate: true` daarna alles opnieuw berekenen |
 | `energydash/analyze` | Gegevenscheck + voorgestelde soort, drempels en sessiestatussen |
 | `energydash/recalculate` | Eén apparaat of alles opnieuw berekenen (beheerder) |
 | `energydash/steps` | Laatste meetstappen van een apparaat (controle) |
@@ -73,6 +74,17 @@ Het paneel krijgt `hass`, `narrow`, `route` en `panel`. Het moet zelf een kopbal
 | `energydash/export` / `import` | Apparaten en instellingen als JSON (beheerder) |
 
 In 1.0 heet `energydash/quality` `energydash/analyze`, en `sessions/list`/`get` is één commando `energydash/sessions`.
+
+## Instellingen (config entry, `data` + `options`)
+| Sleutel | Waarde |
+|---|---|
+| `contract` | `dynamic` (prijs uit een entiteit), `fixed` (vaste prijs) of `null` (nog niet gekozen) |
+| `price_entity`, `price_markup` | prijs-entiteit en opslag per kWh (0 = de entiteit is de hele prijs) |
+| `price_normal`, `price_low` | vaste prijs; `price_low` leeg = één prijs |
+| `import_entity`, `export_entity`, `solar_entity` | lijst met entity-id's (ook één string, van vóór 1.2.5); tellers worden opgeteld |
+| `solar_mode` | `export`, `free` of `grid` |
+| `export_price_mode` | `same`, `auto`, `entity` of `fixed`; leeg = gedrag van vóór 1.2.5 |
+| `export_price_entity`, `export_price_fixed` | bij `entity` en `fixed` |
 
 ## Gegevens
 - **Live**: state-change listeners op gekozen tellers, P1-import en sessie-entiteiten. Elke tellerstap → engine → opslag.

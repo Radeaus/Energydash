@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 DOMAIN = "energydash"
-VERSION = "1.2.4"
+VERSION = "1.2.5"
 
 PANEL_URL_PATH = "energydash"
 PANEL_COMPONENT = "energydash-panel"
@@ -28,9 +28,19 @@ CONF_SOLAR_ENTITY = "solar_entity"
 CONF_SOLAR_MODE = "solar_mode"
 CONF_EXPORT_PRICE_ENTITY = "export_price_entity"
 CONF_EXPORT_PRICE_FIXED = "export_price_fixed"
+CONF_EXPORT_PRICE_MODE = "export_price_mode"
+CONF_PRICE_MARKUP = "price_markup"  # €/kWh added to the price entity (taxes, supplier fee)
 
 CONTRACT_DYNAMIC = "dynamic"
 CONTRACT_FIXED = "fixed"
+
+# Export price: from the price entity's forecast (or derived), the same as the import price
+# (net metering), another entity, or a fixed amount.
+EXPORT_MODE_AUTO = "auto"
+EXPORT_MODE_SAME = "same"
+EXPORT_MODE_ENTITY = "entity"
+EXPORT_MODE_FIXED = "fixed"
+EXPORT_MODES = [EXPORT_MODE_AUTO, EXPORT_MODE_SAME, EXPORT_MODE_ENTITY, EXPORT_MODE_FIXED]
 
 SOLAR_MODE_EXPORT = "export"  # "Wat je anders had gekregen" (default)
 SOLAR_MODE_FREE = "free"  # "Niets"
